@@ -26,10 +26,10 @@ jobs:
       - name: Resolve upstream inputs and generate recipes
         id: discovery
         run: |
-          previous=$(python3 -c 'import json; print(json.dumps(json.load(open("images/postgres/versions.lock.json"))["pgvector"], sort_keys=True, separators=(",", ":")))')
+          previous=$(python3 tools/discover.py --review-inputs)
           python3 tools/discover.py
           python3 tools/generate.py
-          current=$(python3 -c 'import json; print(json.dumps(json.load(open("images/postgres/versions.lock.json"))["pgvector"], sort_keys=True, separators=(",", ":")))')
+          current=$(python3 tools/discover.py --review-inputs)
           if [ "$previous" = "$current" ]; then echo "routine=true" >> "$GITHUB_OUTPUT"; else echo "routine=false" >> "$GITHUB_OUTPUT"; fi
           if git diff --quiet; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
       - name: Retain proposed update inputs
@@ -72,7 +72,7 @@ jobs:
           git push "--force-with-lease=refs/heads/$branch:$lease" origin "HEAD:$branch"
           count=$(gh pr list --head "$branch" --state open --json number --jq 'length')
           if [ "$count" = 0 ]; then
-            gh pr create --head "$branch" --title 'Update PostgreSQL image inputs' --body 'Automated upstream discovery. Review PostgreSQL, pgvector and base digest changes; native builds and recovery tests must pass before merge.'
+            gh pr create --head "$branch" --title 'Update PostgreSQL image inputs' --body 'Automated upstream discovery. Review PostgreSQL, pgvector, gosu, Go toolchain and base digest changes; native builds and recovery tests must pass before merge.'
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

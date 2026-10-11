@@ -26,5 +26,14 @@
         "linux/arm64"
       ]
     }
-  ]
+  ],
+  "gosu": {
+    "version": "1.19",
+    "url": "https://github.com/tianon/gosu/archive/refs/tags/1.19.tar.gz",
+    "sha256": "cd9719b775dbfedae53923c9b0dc792b66d42c51e0b36652ed6f747fbadc0164"
+  },
+  "go": {
+    "version": "1.27.2",
+    "base_image": "docker.io/library/golang:1.27.2-trixie@sha256:e58d6f83b3416618d8bcac2b3dde1b7f7e3c4a77d25e88637f8bbae81536c48d"
+  }
 }

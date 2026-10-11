@@ -21,8 +21,11 @@ class GenerationTests(unittest.TestCase):
         (self.image / "templates").mkdir(parents=True)
         self.metadata = {"supported_majors": ["18"], "variants": ["trixie"], "platforms": ["linux/amd64", "linux/arm64"]}
         self.lock = {"schema_version": 1, "pgvector": {"version": "0.8.7", "url": "https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.7.tar.gz", "sha256": "a" * 64}, "releases": [{"postgres_version": "18.6", "major": "18", "variant": "trixie", "base_image": "postgres:18.6-trixie@sha256:" + "b" * 64, "platforms": ["linux/amd64", "linux/arm64"]}]}
+        self.lock["gosu"] = {"version": "1.19", "url": "https://github.com/tianon/gosu/archive/refs/tags/1.19.tar.gz", "sha256": "c" * 64}
+        self.lock["go"] = {"version": "1.27.2", "base_image": "docker.io/library/golang:1.27.2-trixie@sha256:" + "d" * 64}
+        (self.image / "templates/Dockerfile.gosu").write_text("FROM {{GO_BASE_IMAGE}} AS gosu-build\n")
         for name in ("Dockerfile.debian", "Dockerfile.alpine", "Dockerfile.backup.debian", "Dockerfile.backup.alpine"):
-            (self.image / "templates" / name).write_text("FROM {{BASE_IMAGE}}\n# vector={{PGVECTOR_VERSION}}\n")
+            (self.image / "templates" / name).write_text("{{GOSU_BUILD}}\nFROM {{BASE_IMAGE}}\n# vector={{PGVECTOR_VERSION}}\n")
         for name, value in (("ROOT", self.root), ("IMAGE", self.image)):
             mock = patch.object(generate, name, value)
             mock.start()
@@ -43,6 +46,7 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(len(files), 4)
         self.assertIn(self.image / "generated/18/alpine3.24/Dockerfile.backup", files)
         self.assertTrue(all("{{" not in text for text in files.values()))
+        self.assertTrue(all("AS gosu-build" in text and "golang:1.27.2-trixie@sha256:" in text for text in files.values()))
 
     def test_rejects_unpinned_source(self):
         self.lock["releases"][0]["base_image"] = "postgres:18"
@@ -57,6 +61,21 @@ class GenerationTests(unittest.TestCase):
     def test_rejects_unverified_archive(self):
         self.lock["pgvector"]["sha256"] = "wrong"
         with self.assertRaisesRegex(ValueError, "checksum"):
+            self.render()
+
+    def test_rejects_unpinned_compiler(self):
+        self.lock["go"]["base_image"] = "golang:latest"
+        with self.assertRaisesRegex(ValueError, "compiler"):
+            self.render()
+
+    def test_rejects_mismatched_compiler(self):
+        self.lock["go"]["version"] = "1.27.1"
+        with self.assertRaisesRegex(ValueError, "compiler"):
+            self.render()
+
+    def test_rejects_unverified_gosu(self):
+        self.lock["gosu"]["sha256"] = "unverified"
+        with self.assertRaisesRegex(ValueError, "gosu"):
             self.render()
 
     def test_rejects_wrong_base_distribution(self):

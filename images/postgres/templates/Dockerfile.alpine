@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+{{GOSU_BUILD}}
 # The official Alpine image retains its matching PostgreSQL headers and PGXS.
 FROM {{BASE_IMAGE}} AS extension-build
 
@@ -16,6 +17,10 @@ RUN set -eux; \
     install -Dm644 README.md /artifact/usr/share/doc/pgvector/README.md
 
 FROM {{BASE_IMAGE}}
+COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
+COPY --from=gosu-build /out/LICENSE /usr/share/doc/gosu/LICENSE
+ENV GOSU_VERSION={{GOSU_VERSION}}
+LABEL io.abruncloud.gosu.version="{{GOSU_VERSION}}" io.abruncloud.gosu.go.version="{{GO_VERSION}}"
 COPY --from=extension-build /artifact/ /
 LABEL org.opencontainers.image.title="AbrunCloud PostgreSQL" \
       org.opencontainers.image.description="Official PostgreSQL with pgvector; upstream initialization and configuration conventions" \
