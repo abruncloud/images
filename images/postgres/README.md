@@ -13,7 +13,7 @@ For a resolved PostgreSQL version `18.x`, runtime aliases are:
 | `18`, `18.x` | `18-alpine`, `18.x-alpine` |
 | `18-trixie`, `18.x-trixie` | `18-alpine3.24`, `18.x-alpine3.24` |
 
-Backup variants use the same aliases with `-backup` appended, such as `18-backup` or `18-alpine3.24-backup`. They contain backup tools and do not start a server.
+Backup variants use the same aliases with `-backup` appended, such as `18-backup` or `18-alpine3.24-backup`. They contain client tools only, with no PostgreSQL server or initialization entrypoint.
 
 Tags can receive a qualified rebuild when base packages or pgvector change. Pin `abruncloud/postgres@sha256:...` when reproducibility matters. Published release records identify the exact input versions and image digests. Existing deployments do not update themselves.
 
@@ -60,9 +60,26 @@ Size memory settings and connection limits for your actual container resources a
 
 ## Backup images
 
-Backup images expose `pg_dump`, `pg_restore`, `pg_basebackup`, `pg_verifybackup` and `psql`, plus a small entrypoint for local capture and restore. They use native `PGHOST`, `PGPORT`, `PGUSER`, `PGDATABASE` connection settings and documented secret-file alternatives. Commands are `dump OUTPUT`, `restore INPUT`, `basebackup DIRECTORY`, and `verify DIRECTORY`; additional native tool options can follow. `PGHOST_FILE`, `PGPORT_FILE`, `PGUSER_FILE`, `PGDATABASE_FILE`, and `PGPASSWORD_FILE` are supported. See the CLI's `--help` output for details. Backup containers inherit the upstream root user so fresh output volumes are writable. Use `--user` with pre-owned output storage to run unprivileged. Cancellation forwards signals to the native client process group and waits for exit. Source-server work can continue until PostgreSQL detects disconnected clients; `wal_sender_timeout` does not bound every base-backup phase. Platforms requiring server-side quiescence must verify source sessions and apply authorized server-side cancellation separately. Scheduling, retention and remote uploads belong to your platform or surrounding tooling.
+Backup images are independently packaged client artifacts. They include `pg_dump`, `pg_restore`, `pg_basebackup`, `pg_verifybackup`, `pg_waldump`, and `psql`, the shared libraries those tools require, and the small `postgres-backup` wrapper. They contain no `postgres`, `initdb`, `pg_ctl`, or upstream server entrypoint, and declare no `PGDATA`, persistent volumes, or exposed database port. No extension binaries are needed in a backup client: logical restoration and physical recovery use extensions installed in the destination runtime.
 
-Use matching-major tools for physical backups and verify them with `pg_verifybackup`; archive verification alone does not prove recoverability. Keep the originating runtime digest and test recovery into fresh storage. Newer `pg_dump` can support older servers, but that does not establish physical-backup or cross-major data-directory compatibility.
+The wrapper uses native libpq connection and TLS settings, including `PGHOST`, `PGPORT`, `PGUSER`, `PGDATABASE`, `PGSSLMODE`, and `PGSSLROOTCERT`. `PGHOST_FILE`, `PGPORT_FILE`, `PGUSER_FILE`, `PGDATABASE_FILE`, and `PGPASSWORD_FILE` read mounted secrets; a variable and its file alternative cannot both be set. Passwords are staged in a private temporary password file, removed after the native client exits. Commands are `dump OUTPUT`, `restore INPUT`, `basebackup DIRECTORY`, and `verify DIRECTORY`; native tool options can follow. All six tools can also be invoked by name through the wrapper. See `--help` for usage.
+
+For example, with a prepared local output directory, password file, and trusted server CA:
+
+```sh
+docker run --rm --network database-network \
+  --mount type=bind,src="$PWD/backups",dst=/backups \
+  --mount type=bind,src="$PWD/backup-password",dst=/run/secrets/password,readonly \
+  --mount type=bind,src="$PWD/server-ca.crt",dst=/run/secrets/server-ca,readonly \
+  -e PGHOST=postgres -e PGUSER=backup -e PGDATABASE=app \
+  -e PGPASSWORD_FILE=/run/secrets/password \
+  -e PGSSLMODE=verify-full -e PGSSLROOTCERT=/run/secrets/server-ca \
+  abruncloud/postgres:18-backup dump /backups/app.dump
+```
+
+Output defaults to root ownership. Use `--user` with pre-owned writable output storage to run unprivileged. Physical capture needs an authorized replication role, a matching replication authentication rule, and enough server WAL senders. Cancellation forwards signals to the native client process group, including its WAL streamer, and waits for client exit. Source-server work can continue until PostgreSQL detects disconnected clients; `wal_sender_timeout` does not bound every base-backup phase. Platforms requiring server-side quiescence must verify source sessions and apply authorized server-side cancellation separately. Scheduling, retention, and remote uploads belong to the caller.
+
+Use the exact source major's tools for physical capture, WAL verification, and recovery. [`pg_verifybackup`](https://www.postgresql.org/docs/18/app-pgverifybackup.html) invokes its matching `pg_waldump` to parse the WAL required by a plain-format backup; the image includes both and the native tests exercise verification without skipping WAL. Verification does not prove recoverability: retain the originating runtime digest and test recovery into fresh storage with the required extensions. Newer `pg_dump` can support older servers, but that does not establish physical-backup or cross-major data-directory compatibility.
 
 ## Building and testing
 
@@ -76,11 +93,11 @@ tests/run.sh postgres-runtime:test
 tests/run-backup.sh postgres-backup:test postgres-runtime:test
 ```
 
-Repeat with `alpine3.24` to qualify Alpine. Generated Dockerfiles should not be edited directly: update templates or resolved inputs, then run `python3 tools/generate.py`. CI checks drift and runs native runtime and backup/recovery tests for both supported architectures before publication.
+Repeat with `alpine3.24` to qualify Alpine. Generated Dockerfiles should not be edited directly: update templates or resolved inputs, then run `python3 tools/generate.py`. CI checks drift and runs native runtime and backup/recovery tests for both supported architectures before publication. The backup harness verifies the client-only artifact boundary, verify-full TLS with file credentials, logical vector restoration, full physical/WAL verification with corrupted-WAL rejection, independent recovery with an actual HNSW index scan, and client cancellation followed by explicit fixture administrator cleanup.
 
 ## Updates and security
 
-The privilege-dropping helper `gosu` is rebuilt from a checksum-pinned upstream source release and its locked module dependencies using a digest-pinned, security-patched Go compiler. The compiler runs only in a build stage with automatic toolchain downloads disabled; the final images receive the static helper and its license. Its version and compiler version appear in image labels and the input lock. PostgreSQL's official entrypoint remains unchanged. Rebuilding this helper reduces stale compiler findings; publication still requires rescanning the exact artifacts and passing the configured security gate.
+The privilege-dropping helper `gosu` is rebuilt from a checksum-pinned upstream source release and its locked module dependencies using a digest-pinned, security-patched Go compiler. The compiler runs only in a build stage with automatic toolchain downloads disabled; the runtime images receive the static helper and its license. Backup images contain client tools and do not need this privilege-dropping helper. Its version and compiler version appear in image labels and the input lock. PostgreSQL's official entrypoint remains unchanged. Rebuilding this helper reduces stale compiler findings; publication still requires rescanning the exact artifacts and passing the configured security gate.
 
 Automated discovery proposes upstream patch, base-digest and pgvector changes. Publication follows the repository's checks and release policy; discovery does not update running containers. Major database upgrades and extension catalog upgrades require deliberate migration steps. Do not downgrade a data directory simply by selecting an older image.
 

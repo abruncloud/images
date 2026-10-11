@@ -56,10 +56,18 @@ def rendered_files():
             raise ValueError("base must be an exact official PostgreSQL image digest")
         if source[1] != f"{release['postgres_version']}-{variant}":
             raise ValueError("base tag must match the locked version and distribution")
+        if variant.startswith("alpine"):
+            expected_backup = "docker.io/library/alpine:" + variant.removeprefix("alpine")
+        else:
+            expected_backup = "docker.io/library/debian:" + variant + "-slim"
+        if not re.fullmatch(re.escape(expected_backup) + r"@sha256:[0-9a-f]{64}", release.get("backup_base_image", "")):
+            raise ValueError("backup base must match its pinned official distribution")
         if not release["platforms"] or not set(release["platforms"]).issubset(metadata["platforms"]):
             raise ValueError("unsupported platforms")
         values = {
             "BASE_IMAGE": release["base_image"],
+            "BACKUP_BASE_IMAGE": release["backup_base_image"],
+            "POSTGRES_MAJOR": major,
             "GOSU_BUILD": gosu_fragment,
             "GOSU_VERSION": gosu["version"],
             "GOSU_URL": gosu["url"],

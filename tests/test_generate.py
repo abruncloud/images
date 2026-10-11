@@ -21,11 +21,13 @@ class GenerationTests(unittest.TestCase):
         (self.image / "templates").mkdir(parents=True)
         self.metadata = {"supported_majors": ["18"], "variants": ["trixie"], "platforms": ["linux/amd64", "linux/arm64"]}
         self.lock = {"schema_version": 1, "pgvector": {"version": "0.8.7", "url": "https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.7.tar.gz", "sha256": "a" * 64}, "releases": [{"postgres_version": "18.6", "major": "18", "variant": "trixie", "base_image": "postgres:18.6-trixie@sha256:" + "b" * 64, "platforms": ["linux/amd64", "linux/arm64"]}]}
+        self.lock["releases"][0]["backup_base_image"] = "docker.io/library/debian:trixie-slim@sha256:" + "e" * 64
         self.lock["gosu"] = {"version": "1.19", "url": "https://github.com/tianon/gosu/archive/refs/tags/1.19.tar.gz", "sha256": "c" * 64}
         self.lock["go"] = {"version": "1.27.2", "base_image": "docker.io/library/golang:1.27.2-trixie@sha256:" + "d" * 64}
         (self.image / "templates/Dockerfile.gosu").write_text("FROM {{GO_BASE_IMAGE}} AS gosu-build\n")
         for name in ("Dockerfile.debian", "Dockerfile.alpine", "Dockerfile.backup.debian", "Dockerfile.backup.alpine"):
-            (self.image / "templates" / name).write_text("{{GOSU_BUILD}}\nFROM {{BASE_IMAGE}}\n# vector={{PGVECTOR_VERSION}}\n")
+            text = "FROM {{BACKUP_BASE_IMAGE}}\n# client-major={{POSTGRES_MAJOR}} version={{POSTGRES_VERSION}}\n" if ".backup." in name else "{{GOSU_BUILD}}\nFROM {{BASE_IMAGE}}\n# vector={{PGVECTOR_VERSION}}\n"
+            (self.image / "templates" / name).write_text(text)
         for name, value in (("ROOT", self.root), ("IMAGE", self.image)):
             mock = patch.object(generate, name, value)
             mock.start()
@@ -41,12 +43,30 @@ class GenerationTests(unittest.TestCase):
 
     def test_resolves_distro_and_both_recipes(self):
         self.metadata["variants"].append("alpine3.24")
-        self.lock["releases"].append(dict(self.lock["releases"][0], variant="alpine3.24", base_image="postgres:18.6-alpine3.24@sha256:" + "c" * 64))
+        self.lock["releases"].append(dict(self.lock["releases"][0], variant="alpine3.24", base_image="postgres:18.6-alpine3.24@sha256:" + "c" * 64, backup_base_image="docker.io/library/alpine:3.24@sha256:" + "e" * 64))
         files = self.render()
         self.assertEqual(len(files), 4)
         self.assertIn(self.image / "generated/18/alpine3.24/Dockerfile.backup", files)
         self.assertTrue(all("{{" not in text for text in files.values()))
-        self.assertTrue(all("AS gosu-build" in text and "golang:1.27.2-trixie@sha256:" in text for text in files.values()))
+        runtime = [text for path, text in files.items() if path.name == "Dockerfile"]
+        backups = [text for path, text in files.items() if path.name == "Dockerfile.backup"]
+        self.assertTrue(all("AS gosu-build" in text and "golang:1.27.2-trixie@sha256:" in text for text in runtime))
+        self.assertTrue(all("gosu" not in text and "client-major=18 version=18.6" in text for text in backups))
+        self.assertIn("FROM docker.io/library/alpine:3.24@sha256:", files[self.image / "generated/18/alpine3.24/Dockerfile.backup"])
+
+    def test_rejects_unpinned_or_wrong_backup_distribution(self):
+        for source in ["debian:trixie-slim", "docker.io/library/alpine:3.24@sha256:" + "e" * 64,
+                       "docker.io/library/debian:bookworm-slim@sha256:" + "e" * 64,
+                       "docker.io/library/debian:trixie-slim@sha256:invalid"]:
+            with self.subTest(source=source):
+                self.lock["releases"][0]["backup_base_image"] = source
+                with self.assertRaisesRegex(ValueError, "backup base"):
+                    self.render()
+
+    def test_rejects_missing_backup_base(self):
+        del self.lock["releases"][0]["backup_base_image"]
+        with self.assertRaisesRegex(ValueError, "backup base"):
+            self.render()
 
     def test_rejects_unpinned_source(self):
         self.lock["releases"][0]["base_image"] = "postgres:18"

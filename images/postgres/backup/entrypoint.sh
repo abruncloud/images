@@ -8,7 +8,7 @@ Usage: postgres-backup COMMAND [ARGS...]
   restore INPUT [pg_restore options...]        restore into PGDATABASE
   basebackup DIRECTORY [pg_basebackup options...]  physical backup with streamed WAL
   verify DIRECTORY [pg_verifybackup options...]    verify physical backup manifest
-  pg_dump|pg_restore|pg_basebackup|pg_verifybackup|psql [native options...]
+  pg_dump|pg_restore|pg_basebackup|pg_verifybackup|pg_waldump|psql [native options...]
 Connection: standard libpq PGHOST, PGPORT, PGUSER, PGDATABASE and TLS settings.
 PGHOST_FILE, PGPORT_FILE, PGUSER_FILE, PGDATABASE_FILE and PGPASSWORD_FILE
 read private files. A variable and its _FILE equivalent cannot both be set.
@@ -39,7 +39,7 @@ case "$command" in
    verify) set -- pg_verifybackup "$@" "$target";;
   esac
   ;;
- pg_dump|pg_restore|pg_basebackup|pg_verifybackup|psql) set -- "$command" "$@";;
+ pg_dump|pg_restore|pg_basebackup|pg_verifybackup|pg_waldump|psql) set -- "$command" "$@";;
  *) echo 'unsupported backup command; use help' >&2; exit 2;;
 esac
 scratch=$(mktemp -d /tmp/postgres-backup.XXXXXX)

@@ -172,5 +172,47 @@ class DiscoveryAuthenticationTests(unittest.TestCase):
         self.assertEqual(request.get_header("Authorization"), "Bearer registry-token")
 
 
+class BackupBaseDiscoveryTests(unittest.TestCase):
+    def test_backup_base_refresh_is_routine(self):
+        current = json.loads((discover.ROOT / "images/postgres/versions.lock.json").read_text())
+        import copy
+        updated = copy.deepcopy(current)
+        for item in updated["releases"]:
+            item["backup_base_image"] = item["backup_base_image"].split("@", 1)[0] + "@sha256:" + "f" * 64
+        self.assertEqual(discover.review_inputs(current), discover.review_inputs(updated))
+
+    def test_clean_base_resolver_requires_verified_native_platforms(self):
+        import hashlib
+        raw = json.dumps({"manifests": [{"platform": {"os": "linux", "architecture": arch}} for arch in ["amd64", "arm64"]]}).encode()
+        digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+        for repository, tag in [("debian", "trixie-slim"), ("alpine", "3.24")]:
+            with self.subTest(repository=repository), patch.object(discover, "fetch", side_effect=[(b'{"token":"registry"}', {}), (raw, {"Docker-Content-Digest": digest})]) as fetch:
+                image, platforms = discover.resolve(tag, repository=repository)
+                self.assertEqual(image, "docker.io/library/" + repository + ":" + tag + "@" + digest)
+                self.assertEqual(platforms, ["linux/amd64", "linux/arm64"])
+                self.assertIn("library/" + repository + ":pull", fetch.call_args_list[0].args[0])
+
+    def test_discovery_refreshes_correct_clean_base_without_changing_supported_major(self):
+        current = json.loads((discover.ROOT / "images/postgres/versions.lock.json").read_text())
+        seen = []
+        def resolve(tag, repository="postgres"):
+            seen.append((repository, tag))
+            return "docker.io/library/" + repository + ":" + tag + "@sha256:" + "f" * 64, ["linux/amd64", "linux/arm64"]
+        def fetch(url, headers=None):
+            if url.endswith("/library/postgres"):
+                return b"Tags: 18.6-trixie, 18.6-alpine3.24\n", {}
+            if "/pgvector/tags" in url:
+                return b'[{"name":"v0.8.7"}]', {}
+            if url.endswith("v0.8.7.tar.gz"):
+                return b"source", {}
+            raise AssertionError("Unexpected source " + url)
+        with patch.object(discover, "resolve", side_effect=resolve), patch.object(discover, "fetch", side_effect=fetch), patch.object(discover, "discover_hardening", return_value=(current["gosu"], current["go"])):
+            updated = discover.discover()
+        self.assertIn(("debian", "trixie-slim"), seen)
+        self.assertIn(("alpine", "3.24"), seen)
+        self.assertEqual({item["major"] for item in updated["releases"]}, {"18"})
+        self.assertTrue(all(item["backup_base_image"].endswith("@sha256:" + "f" * 64) for item in updated["releases"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,32 +1,32 @@
-# Generated from an immutable official PostgreSQL release.
-# Rebuild the same gosu source with a patched compiler; only artifacts enter runtime.
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.2-trixie@sha256:e58d6f83b3416618d8bcac2b3dde1b7f7e3c4a77d25e88637f8bbae81536c48d AS gosu-build
-ARG TARGETARCH
-ENV GOTOOLCHAIN=local CGO_ENABLED=0
+# syntax=docker/dockerfile:1
+# Select matching native client tools and libpq, without copying system libraries.
+FROM docker.io/library/postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 AS tools-source
 RUN set -eux; \
-    test "$(go env GOVERSION)" = 'go1.27.2'; \
-    curl --fail --show-error --location --proto '=https' --tlsv1.2 \
-        'https://github.com/tianon/gosu/archive/refs/tags/1.19.tar.gz' --output /tmp/gosu.tar.gz; \
-    echo 'cd9719b775dbfedae53923c9b0dc792b66d42c51e0b36652ed6f747fbadc0164  /tmp/gosu.tar.gz' | sha256sum --check -; \
-    mkdir /src /out; \
-    tar -xzf /tmp/gosu.tar.gz -C /src --strip-components=1; \
-    cd /src; \
-    go mod download; \
-    go mod verify; \
-    go test -mod=readonly ./...; \
-    GOOS=linux GOARCH="$TARGETARCH" go build -mod=readonly -trimpath -buildvcs=false -ldflags='-w' -o /out/gosu .; \
-    go version -m /out/gosu; \
-    cp LICENSE /out/LICENSE
+    mkdir -p /artifact/usr/local/bin /artifact/usr/local/lib /artifact/usr/share/doc/postgresql-backup-tools; \
+    for tool in pg_dump pg_dumpall pg_restore pg_basebackup pg_verifybackup psql pg_waldump pg_isready pg_combinebackup; do cp "/usr/local/bin/$tool" /artifact/usr/local/bin/; done; \
+    cp -a /usr/local/lib/libpq.so* /artifact/usr/local/lib/; \
+    wget -O /tmp/postgresql.tar.bz2 "https://ftp.postgresql.org/pub/source/v$PG_VERSION/postgresql-$PG_VERSION.tar.bz2"; \
+    echo "$PG_SHA256  /tmp/postgresql.tar.bz2" | sha256sum -c -; \
+    tar -xOf /tmp/postgresql.tar.bz2 "postgresql-$PG_VERSION/COPYRIGHT" > /artifact/usr/share/doc/postgresql-backup-tools/COPYRIGHT
 
-FROM docker.io/library/postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
-COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
-COPY --from=gosu-build /out/LICENSE /usr/share/doc/gosu/LICENSE
-ENV GOSU_VERSION=1.19
-LABEL io.abruncloud.gosu.version="1.19" io.abruncloud.gosu.go.version="1.27.2"
+FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+COPY --from=tools-source /artifact/ /
+# Install the shared-library closure through apk so OS metadata remains accurate.
+RUN set -eux; \
+    apk add --no-cache --virtual .dependency-scan pax-utils; \
+    dependencies="$(scanelf --needed --nobanner --format '%n#p' --recursive /usr/local \
+        | tr ',' '\n' | sort -u \
+        | awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }')"; \
+    apk add --no-cache --virtual .postgresql-client-rundeps $dependencies ca-certificates; \
+    apk del --no-network .dependency-scan
 LABEL org.opencontainers.image.title="PostgreSQL backup tools" \
       org.opencontainers.image.version="18.6" \
-      org.opencontainers.image.description="Native logical and physical PostgreSQL backup tools with file-based credentials"
+      org.opencontainers.image.description="Client-only PostgreSQL logical and physical backup tools" \
+      org.opencontainers.image.source="https://github.com/abruncloud/images"
 COPY images/postgres/backup/entrypoint.sh /usr/local/bin/postgres-backup
-RUN chmod 0555 /usr/local/bin/postgres-backup
+RUN chmod 0555 /usr/local/bin/postgres-backup; \
+    for tool in pg_dump pg_dumpall pg_restore pg_basebackup pg_verifybackup psql pg_waldump pg_isready pg_combinebackup; do "$tool" --version; done; \
+    command -v setsid
+WORKDIR /work
 ENTRYPOINT ["/usr/local/bin/postgres-backup"]
 CMD ["help"]
