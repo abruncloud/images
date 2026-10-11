@@ -2,6 +2,16 @@ name: Publish PostgreSQL images
 on:
   push:
     branches: [main]
+    paths:
+      - images/postgres/image.json
+      - images/postgres/versions.lock.json
+      - images/postgres/security-policy.json
+      - images/postgres/templates/Dockerfile.gosu
+      - images/postgres/templates/Dockerfile.alpine
+      - images/postgres/templates/Dockerfile.debian
+      - images/postgres/generated/*/*/Dockerfile
+      - tools/generate.py
+      - tools/security_gate.py
   workflow_dispatch:
 permissions:
   contents: read
