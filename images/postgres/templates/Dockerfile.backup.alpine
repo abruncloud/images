@@ -17,7 +17,7 @@ RUN set -eux; \
     dependencies="$(scanelf --needed --nobanner --format '%n#p' --recursive /usr/local \
         | tr ',' '\n' | sort -u \
         | awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }')"; \
-    apk add --no-cache --virtual .postgresql-client-rundeps $dependencies ca-certificates; \
+    apk add --no-cache --virtual .postgresql-client-rundeps $dependencies ca-certificates curl jq; \
     apk del --no-network .dependency-scan
 LABEL org.opencontainers.image.title="PostgreSQL backup tools" \
       org.opencontainers.image.version="{{POSTGRES_VERSION}}" \

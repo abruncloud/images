@@ -17,6 +17,11 @@ docker run --rm --entrypoint sh "$backup_image" -ec '
  for binary in pg_dump pg_restore pg_basebackup pg_verifybackup psql pg_waldump; do "$binary" --version; done
  for binary in sh setsid mktemp sed cat rm; do command -v "$binary" >/dev/null; done
 '
+# Control-plane capture scripts require both tools in the client-only artifact.
+docker run --rm --entrypoint sh "$backup_image" -ec '
+ curl --version >/dev/null
+ test "$(printf true | jq -r .)" = true
+'
 prefix="postgres-backup-test-$(python3 -c 'import uuid;print(uuid.uuid4().hex[:12])')"
 network="$prefix-network"
 source="$prefix-source"

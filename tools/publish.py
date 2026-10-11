@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Promote already tested native digests without rebuilding any image."""
+import argparse
 import json
 import os
 import re
@@ -25,7 +26,9 @@ def copy_verified(source, destination):
         raise ValueError("Cross-registry digest changed during copy")
 
 
-def main():
+def main(target_filter="all"):
+    if target_filter not in {"all", "runtime", "backup"}:
+        raise ValueError("Unsupported publication target")
     sha = os.environ["EXPECTED_SHA"]
     if not re.fullmatch(r"[a-f0-9]{40}", sha):
         raise ValueError("Invalid source commit")
@@ -41,6 +44,8 @@ def main():
     # Assemble and sign every candidate before moving any public version alias.
     for release in lock["releases"]:
         for target in targets(metadata, release):
+            if target_filter != "all" and target != target_filter:
+                continue
             refs = []
             candidate_refs = []
             for arch in ["amd64", "arm64"]:
@@ -66,15 +71,19 @@ def main():
             outputs.append({"major": release["major"], "variant": release["variant"], "target": target,
                             "digest": digest, "native_refs": refs, "candidate_native_refs": candidate_refs,
                             "candidate_ref": candidate_reference, "candidate_archive_tag": candidate, "tags": tags(release["major"], release["variant"], target)})
+    if not outputs:
+        raise ValueError("No qualified artifacts for selected publication target")
     if current_main() != sha:
         raise SystemExit("Refusing alias promotion: main advanced during signing")
     for output in outputs:
         for tag in output["tags"]:
             command("docker", "buildx", "imagetools", "create", "--prefer-index=false", "--tag", tag,
                     REPOSITORY + "@" + output["digest"])
-    Path("release.json").write_text(json.dumps({"schema_version": 1, "source_commit": sha, "build_id": build_id,
+    Path("release.json").write_text(json.dumps({"schema_version": 1, "publication_target": target_filter, "source_commit": sha, "build_id": build_id,
                                                "workflow_run_id": run_id, "workflow_run_attempt": attempt,
                                                "inputs": lock, "candidate_repository": CANDIDATE_REPOSITORY, "images": outputs}, indent=2) + "\n")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--target", choices=["all", "runtime", "backup"], default="all")
+    main(parser.parse_args().target)

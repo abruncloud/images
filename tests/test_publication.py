@@ -31,9 +31,9 @@ class PublicationTests(unittest.TestCase):
             return json.dumps({"digest": "sha256:" + "c" * 64})
         return ""
 
-    def execute(self, main_refs=None, command=None):
+    def execute(self, main_refs=None, command=None, target="all"):
         with patch.dict(os.environ, self.env), patch.object(publish, "current_main", side_effect=main_refs or ["b" * 40, "b" * 40]), patch.object(publish, "load", return_value=({"backup_variant": "alpine3.24"}, self.lock)), patch.object(publish, "tags", side_effect=lambda major, variant, target: ["abruncloud/postgres:18" + ("-backup" if target == "backup" else "")]), patch.object(publish, "command", side_effect=command or self.command):
-            publish.main()
+            publish.main(target)
 
     def test_release_records_build_identity_inputs_and_exact_digests(self):
         self.execute()
@@ -133,3 +133,24 @@ class PublicationTests(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             self.execute(command=failure)
         self.assertFalse(any("--prefer-index=false" in call for call in self.calls))
+
+    def test_backup_only_ignores_runtime_digests_and_aliases(self):
+        for path in Path("digests").glob("*runtime*"):
+            path.unlink()
+        self.execute(target="backup")
+        record = json.loads(Path("release.json").read_text())
+        self.assertEqual(record["publication_target"], "backup")
+        self.assertEqual([item["target"] for item in record["images"]], ["backup"])
+        public = [call[call.index("--tag") + 1] for call in self.calls if "--tag" in call and call[call.index("--tag") + 1].startswith("abruncloud/postgres:")]
+        self.assertEqual(public, ["abruncloud/postgres:18-backup"])
+        self.assertEqual(sum(call[:2] == ("cosign", "sign") for call in self.calls), 3)
+
+    def test_backup_only_stale_publication_still_blocks_aliases(self):
+        with self.assertRaisesRegex(SystemExit, "main advanced during signing"):
+            self.execute(main_refs=["b" * 40, "d" * 40], target="backup")
+        self.assertFalse(any("--prefer-index=false" in call for call in self.calls))
+
+    def test_unknown_publication_target_fails_before_registry_calls(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported publication target"):
+            self.execute(target="unknown")
+        self.assertEqual(self.calls, [])
