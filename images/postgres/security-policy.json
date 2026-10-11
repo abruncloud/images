@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "mode": "actionable",
+  "critical_assessments": [
+    {
+      "id": "CVE-2026-6653",
+      "os_family": "debian",
+      "os_major": "13",
+      "pkg_name": "libxml2",
+      "installed_version": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+      "assessment": "Debian trixie: no-dsa (Minor issue)",
+      "source": "https://security-tracker.debian.org/tracker/CVE-2026-6653",
+      "reason": "Debian explicitly classifies this trixie finding as a Minor issue with no dedicated security advisory. Follow the distribution assessment for this exact package version while retaining the scanner finding. The SQL/XML parser is present: this is risk acceptance, not a not-affected claim. An available fixed package or expiry makes this assessment ineligible.",
+      "owner": "abruncloud/images maintainers",
+      "expires": "2026-11-10"
+    }
+  ]
+}
