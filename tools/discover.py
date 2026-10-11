@@ -25,7 +25,7 @@ def fetch(url, headers=None):
         return response.read(), response.headers
 
 def resolve(tag, repository="postgres"):
-    if repository not in {"postgres", "golang"}:
+    if repository not in {"postgres", "golang", "debian", "alpine"}:
         raise ValueError("Unsupported official image repository")
     token = json.loads(fetch("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/" + repository + ":pull")[0])["token"]
     raw, headers = fetch("https://registry-1.docker.io/v2/library/" + repository + "/manifests/" + tag,
@@ -86,8 +86,15 @@ def discover():
                 raise ValueError("Unsupported official PostgreSQL variant: " + str(major) + "/" + variant)
             version = max(versions, key=lambda value: tuple(map(int, value.split("."))))
             image, platforms = resolve(version + "-" + variant)
+            if variant.startswith("alpine"):
+                backup_tag, backup_repository = variant.removeprefix("alpine"), "alpine"
+            else:
+                backup_tag, backup_repository = variant + "-slim", "debian"
+            backup_image, backup_platforms = resolve(backup_tag, repository=backup_repository)
+            if backup_platforms != platforms:
+                raise ValueError("Backup and server platform support differ")
             records.append({"postgres_version": version, "major": str(major), "variant": variant,
-                            "base_image": image, "platforms": platforms})
+                            "base_image": image, "backup_base_image": backup_image, "platforms": platforms})
     tags = json.loads(fetch("https://api.github.com/repos/pgvector/pgvector/tags?per_page=100")[0])
     versions = [tag["name"][1:] for tag in tags if re.fullmatch(r"v\d+\.\d+\.\d+", tag["name"])]
     version = max(versions, key=lambda value: tuple(map(int, value.split("."))))
