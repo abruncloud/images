@@ -31,3 +31,5 @@ release digests during cleanup.
 Publishing credentials must only be available to trusted release jobs. Fork pull
 requests must not receive publishing secrets or write permissions. Changes to CI
 and source checksums require the same review as changes to runtime code.
+
+Publication and daily rescans retain complete runtime and backup vulnerability reports as GitHub Actions artifacts, even when a scan fails. A separate fail-closed gate blocks all HIGH/CRITICAL findings, including those without an available fix; missing or invalid reports also block promotion.

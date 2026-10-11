@@ -18,6 +18,8 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 tools/generate.py --check
+      - name: Validate publication metadata and security policy
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
       - id: matrix
         run: echo "value=$(python3 tools/release.py matrix)" >> "$GITHUB_OUTPUT"
   qualify:
@@ -77,21 +79,40 @@ jobs:
           bash tests/run.sh "$RUNTIME"
           bash tests/run-backup.sh "$BACKUP" "$RUNTIME"
       - name: Scan runtime
+        if: always() && steps.runtime.outputs.digest != ''
         uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
         with:
           version: v0.75.0
           image-ref: abruncloud/postgres@${{ steps.runtime.outputs.digest }}
-          severity: HIGH,CRITICAL
-          exit-code: '1'
+          format: json
+          output: scan-runtime.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          scanners: vuln
+          exit-code: '0'
           ignore-unfixed: false
       - name: Scan backup
+        if: always() && steps.backup.outputs.digest != ''
         uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
         with:
           version: v0.75.0
           image-ref: abruncloud/postgres@${{ steps.backup.outputs.digest }}
-          severity: HIGH,CRITICAL
-          exit-code: '1'
+          format: json
+          output: scan-backup.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          scanners: vuln
+          exit-code: '0'
           ignore-unfixed: false
+      - name: Retain complete vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: security-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          path: scan-*.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Enforce runtime and backup security policy
+        if: always() && steps.runtime.outputs.digest != '' && steps.backup.outputs.digest != ''
+        run: python3 tools/security_gate.py scan-runtime.json scan-backup.json
       - name: Record qualified digests
         env:
           RUNTIME_DIGEST: ${{ steps.runtime.outputs.digest }}

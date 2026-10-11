@@ -59,3 +59,5 @@ discovery fails with an actionable error instead of bypassing the policy.
 Normal server patch/base rebuilds can merge after qualification. Changes to the
 pgvector source lock remain manual review. Missing credentials, failed tests,
 security findings, or stale source commits prevent public alias promotion.
+
+Publication and daily rescans retain complete runtime and backup vulnerability reports as GitHub Actions artifacts, even when a scan fails. A separate fail-closed gate blocks all HIGH/CRITICAL findings, including those without an available fix; missing or invalid reports also block promotion.
