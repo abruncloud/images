@@ -129,5 +129,48 @@ class HardeningDiscoveryTests(unittest.TestCase):
             self.assertEqual(updated["go"], current["go"])
             self.assertEqual(updated["releases"][0]["postgres_version"], "18.6")
 
+class DiscoveryAuthenticationTests(unittest.TestCase):
+    def request(self, url, token="test-token", headers=None):
+        import os
+        from unittest.mock import MagicMock
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"response"
+        response.headers = {}
+        environment = {"GH_TOKEN": token} if token is not None else {}
+        with patch.dict(os.environ, environment, clear=True), patch.object(discover.urllib.request, "urlopen", return_value=response) as open_request:
+            discover.fetch(url, headers)
+        return open_request.call_args.args[0]
+
+    def test_token_is_only_sent_to_exact_https_github_api(self):
+        for url in ["https://api.github.com/repos/pgvector/pgvector/tags", "https://api.github.com:443/repos/tianon/gosu/releases/latest"]:
+            request = self.request(url)
+            self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+            self.assertNotIn("Authorization", request.headers)
+
+    def test_other_origins_never_receive_github_token(self):
+        for url in ["http://api.github.com/repos", "https://api.github.com:8443/repos", "https://api.github.com.evil.invalid/repos",
+                    "https://user@api.github.com/repos", "https://api.github.com@evil.invalid/repos", "https://github.com/archive", "https://raw.githubusercontent.com/source",
+                    "https://auth.docker.io/token", "https://registry-1.docker.io/v2"]:
+            with self.subTest(url=url):
+                self.assertIsNone(self.request(url).get_header("Authorization"))
+
+    def test_absent_token_keeps_local_discovery_anonymous(self):
+        self.assertIsNone(self.request("https://api.github.com/repos", token=None).get_header("Authorization"))
+        self.assertIsNone(self.request("https://api.github.com/repos", token="").get_header("Authorization"))
+
+    def test_redirects_never_forward_github_token(self):
+        request = self.request("https://api.github.com/repos")
+        handler = discover.urllib.request.HTTPRedirectHandler()
+        for target in ["https://api.github.com/moved", "https://codeload.github.com/archive", "https://evil.invalid/archive", "http://api.github.com/moved"]:
+            with self.subTest(target=target):
+                redirected = handler.redirect_request(request, None, 302, "Found", {}, target)
+                self.assertIsNone(redirected.get_header("Authorization"))
+
+    def test_registry_authorization_remains_its_own_token(self):
+        request = self.request("https://registry-1.docker.io/v2/library/postgres/manifests/tag", headers={"Authorization": "Bearer registry-token"})
+        self.assertEqual(request.get_header("Authorization"), "Bearer registry-token")
+
+
 if __name__ == "__main__":
     unittest.main()
