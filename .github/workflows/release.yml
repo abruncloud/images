@@ -1,0 +1,154 @@
+name: Publish PostgreSQL images
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: postgres-publication
+  cancel-in-progress: false
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - run: python3 tools/generate.py --check
+      - id: matrix
+        run: echo "value=$(python3 tools/release.py matrix)" >> "$GITHUB_OUTPUT"
+  qualify:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    environment: dockerhub
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - name: Require publication credentials
+        env:
+          USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: test -n "$USERNAME" && test -n "$TOKEN"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: runtime
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          file: ${{ matrix.directory }}/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          tags: abruncloud/postgres:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          sbom: true
+          provenance: mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/abruncloud/images
+            org.opencontainers.image.revision=${{ github.sha }}
+      - id: backup
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          file: ${{ matrix.directory }}/Dockerfile.backup
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          tags: abruncloud/postgres:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-backup
+          sbom: true
+          provenance: mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/abruncloud/images
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Test exact published candidates on native architecture
+        env:
+          RUNTIME: abruncloud/postgres@${{ steps.runtime.outputs.digest }}
+          BACKUP: abruncloud/postgres@${{ steps.backup.outputs.digest }}
+        run: |
+          docker pull "$RUNTIME"
+          docker pull "$BACKUP"
+          bash tests/run.sh "$RUNTIME"
+          bash tests/run-backup.sh "$BACKUP" "$RUNTIME"
+      - name: Scan runtime
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: abruncloud/postgres@${{ steps.runtime.outputs.digest }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Scan backup
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: abruncloud/postgres@${{ steps.backup.outputs.digest }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Record qualified digests
+        env:
+          RUNTIME_DIGEST: ${{ steps.runtime.outputs.digest }}
+          BACKUP_DIGEST: ${{ steps.backup.outputs.digest }}
+          MAJOR: ${{ matrix.major }}
+          VARIANT: ${{ matrix.variant }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p digests
+          printf '%s\n' "$RUNTIME_DIGEST" > "digests/$MAJOR-$VARIANT-runtime-$ARCH"
+          printf '%s\n' "$BACKUP_DIGEST" > "digests/$MAJOR-$VARIANT-backup-$ARCH"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: digests-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          path: digests
+          retention-days: 90
+  promote:
+    needs: [metadata, qualify]
+    runs-on: ubuntu-24.04
+    environment: dockerhub
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@af595e623eec1ede52d6322f53b635d5def0a95a
+        with:
+          cosign-release: v3.1.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+      - name: Assemble and sign releases; promote only current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: python3 tools/publish.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release.json
+          retention-days: 90
+      - name: Persist release record beyond artifact retention
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: images-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "Image release $GITHUB_SHA" --notes 'Qualified image digests, exact build inputs and tags are recorded in release.json. Existing deployment digests remain pinned.'
+          fi
+          gh release upload "$RELEASE_TAG" release.json --clobber

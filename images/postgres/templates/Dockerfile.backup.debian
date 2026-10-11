@@ -1,0 +1,9 @@
+# Generated from an immutable official PostgreSQL release.
+FROM {{BASE_IMAGE}}
+LABEL org.opencontainers.image.title="PostgreSQL backup tools" \
+      org.opencontainers.image.version="{{POSTGRES_VERSION}}" \
+      org.opencontainers.image.description="Native logical and physical PostgreSQL backup tools with file-based credentials"
+COPY images/postgres/backup/entrypoint.sh /usr/local/bin/postgres-backup
+RUN chmod 0555 /usr/local/bin/postgres-backup
+ENTRYPOINT ["/usr/local/bin/postgres-backup"]
+CMD ["help"]

@@ -1,0 +1,42 @@
+name: Rescan published PostgreSQL images
+on:
+  schedule:
+    - cron: '43 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - id: matrix
+        run: echo "value=$(python3 tools/release.py matrix)" >> "$GITHUB_OUTPUT"
+  scan:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Rescan runtime against current vulnerability database
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: abruncloud/postgres:${{ matrix.postgres_version }}-${{ matrix.variant }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false
+      - name: Rescan backup against current vulnerability database
+        if: always()
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: abruncloud/postgres:${{ matrix.postgres_version }}-${{ matrix.variant }}-backup
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: false

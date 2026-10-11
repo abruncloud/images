@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "postgres",
+  "category": "database",
+  "repository": "abruncloud/postgres",
+  "supported_majors": ["18"],
+  "variants": ["trixie", "alpine3.24"],
+  "default_variant": "trixie",
+  "default_alpine_variant": "alpine3.24",
+  "platforms": ["linux/amd64", "linux/arm64"],
+  "extensions": ["vector", "pg_trgm", "pg_stat_statements", "uuid-ossp", "btree_gin", "btree_gist", "pgcrypto"],
+  "targets": ["runtime", "backup"],
+  "upstream": "https://github.com/docker-library/postgres"
+}

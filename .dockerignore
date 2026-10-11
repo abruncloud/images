@@ -1,0 +1,9 @@
+.git
+.github
+**/__pycache__
+**/*.pyc
+.venv
+.local
+release-output
+digests
+release.json
