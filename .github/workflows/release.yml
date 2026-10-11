@@ -56,6 +56,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/abruncloud/images
             org.opencontainers.image.revision=${{ github.sha }}
       - id: backup
+        if: matrix.backup
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
@@ -68,14 +69,19 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/abruncloud/images
             org.opencontainers.image.revision=${{ github.sha }}
-      - name: Test exact published candidates on native architecture
+      - name: Test exact runtime candidate on native architecture
+        env:
+          RUNTIME: ghcr.io/abruncloud/postgres-ci@${{ steps.runtime.outputs.digest }}
+        run: |
+          docker pull "$RUNTIME"
+          bash tests/run.sh "$RUNTIME"
+      - name: Test exact backup candidate and recovery on native architecture
+        if: matrix.backup
         env:
           RUNTIME: ghcr.io/abruncloud/postgres-ci@${{ steps.runtime.outputs.digest }}
           BACKUP: ghcr.io/abruncloud/postgres-ci@${{ steps.backup.outputs.digest }}
         run: |
-          docker pull "$RUNTIME"
           docker pull "$BACKUP"
-          bash tests/run.sh "$RUNTIME"
           bash tests/run-backup.sh "$BACKUP" "$RUNTIME"
       - name: Scan runtime
         if: always() && steps.runtime.outputs.digest != ''
@@ -90,7 +96,7 @@ jobs:
           exit-code: '0'
           ignore-unfixed: false
       - name: Scan backup
-        if: always() && steps.backup.outputs.digest != ''
+        if: always() && matrix.backup && steps.backup.outputs.digest != ''
         uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
         with:
           version: v0.75.0
@@ -109,20 +115,31 @@ jobs:
           path: scan-*.json
           if-no-files-found: warn
           retention-days: 90
-      - name: Enforce runtime and backup security policy
-        if: always() && steps.runtime.outputs.digest != '' && steps.backup.outputs.digest != ''
-        run: python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json scan-backup.json
+      - name: Enforce security policy for every expected artifact
+        if: always() && steps.runtime.outputs.digest != ''
+        env:
+          BACKUP_ENABLED: ${{ matrix.backup }}
+        run: |
+          if [ "$BACKUP_ENABLED" = true ]; then
+            python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json scan-backup.json
+          else
+            python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json
+          fi
       - name: Record qualified digests
         env:
           RUNTIME_DIGEST: ${{ steps.runtime.outputs.digest }}
           BACKUP_DIGEST: ${{ steps.backup.outputs.digest }}
+          BACKUP_ENABLED: ${{ matrix.backup }}
           MAJOR: ${{ matrix.major }}
           VARIANT: ${{ matrix.variant }}
           ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p digests
           printf '%s\n' "$RUNTIME_DIGEST" > "digests/$MAJOR-$VARIANT-runtime-$ARCH"
-          printf '%s\n' "$BACKUP_DIGEST" > "digests/$MAJOR-$VARIANT-backup-$ARCH"
+          if [ "$BACKUP_ENABLED" = true ]; then
+            test -n "$BACKUP_DIGEST"
+            printf '%s\n' "$BACKUP_DIGEST" > "digests/$MAJOR-$VARIANT-backup-$ARCH"
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: digests-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}

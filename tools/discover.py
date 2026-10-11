@@ -86,15 +86,14 @@ def discover():
                 raise ValueError("Unsupported official PostgreSQL variant: " + str(major) + "/" + variant)
             version = max(versions, key=lambda value: tuple(map(int, value.split("."))))
             image, platforms = resolve(version + "-" + variant)
-            if variant.startswith("alpine"):
-                backup_tag, backup_repository = variant.removeprefix("alpine"), "alpine"
-            else:
-                backup_tag, backup_repository = variant + "-slim", "debian"
-            backup_image, backup_platforms = resolve(backup_tag, repository=backup_repository)
-            if backup_platforms != platforms:
-                raise ValueError("Backup and server platform support differ")
-            records.append({"postgres_version": version, "major": str(major), "variant": variant,
-                            "base_image": image, "backup_base_image": backup_image, "platforms": platforms})
+            record = {"postgres_version": version, "major": str(major), "variant": variant,
+                      "base_image": image, "platforms": platforms}
+            if variant == metadata["backup_variant"]:
+                backup_image, backup_platforms = resolve(variant.removeprefix("alpine"), repository="alpine")
+                if backup_platforms != platforms:
+                    raise ValueError("Backup and server platform support differ")
+                record["backup_base_image"] = backup_image
+            records.append(record)
     tags = json.loads(fetch("https://api.github.com/repos/pgvector/pgvector/tags?per_page=100")[0])
     versions = [tag["name"][1:] for tag in tags if re.fullmatch(r"v\d+\.\d+\.\d+", tag["name"])]
     version = max(versions, key=lambda value: tuple(map(int, value.split("."))))

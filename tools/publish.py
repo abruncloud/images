@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from release import load, tags
+from release import load, tags, targets
 
 REPOSITORY = "abruncloud/postgres"
 CANDIDATE_REPOSITORY = "ghcr.io/abruncloud/postgres-ci"
@@ -36,11 +36,11 @@ def main():
     if not run_id.isdigit() or not attempt.isdigit():
         raise ValueError("Invalid workflow run identity")
     build_id = sha + "-" + run_id + "-" + attempt
-    _, lock = load()
+    metadata, lock = load()
     outputs = []
     # Assemble and sign every candidate before moving any public version alias.
     for release in lock["releases"]:
-        for target in ["runtime", "backup"]:
+        for target in targets(metadata, release):
             refs = []
             candidate_refs = []
             for arch in ["amd64", "arm64"]:

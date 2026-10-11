@@ -14,8 +14,7 @@
       "platforms": [
         "linux/amd64",
         "linux/arm64"
-      ],
-      "backup_base_image": "docker.io/library/debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f"
+      ]
     },
     {
       "postgres_version": "18.6",

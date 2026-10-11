@@ -19,13 +19,13 @@ class GenerationTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.image = self.root / "images/postgres"
         (self.image / "templates").mkdir(parents=True)
-        self.metadata = {"supported_majors": ["18"], "variants": ["trixie"], "platforms": ["linux/amd64", "linux/arm64"]}
+        self.metadata = {"supported_majors": ["18"], "variants": ["trixie", "alpine3.24"], "backup_variant": "alpine3.24", "platforms": ["linux/amd64", "linux/arm64"]}
         self.lock = {"schema_version": 1, "pgvector": {"version": "0.8.7", "url": "https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.7.tar.gz", "sha256": "a" * 64}, "releases": [{"postgres_version": "18.6", "major": "18", "variant": "trixie", "base_image": "postgres:18.6-trixie@sha256:" + "b" * 64, "platforms": ["linux/amd64", "linux/arm64"]}]}
-        self.lock["releases"][0]["backup_base_image"] = "docker.io/library/debian:trixie-slim@sha256:" + "e" * 64
+        self.lock["releases"].append(dict(self.lock["releases"][0], variant="alpine3.24", base_image="postgres:18.6-alpine3.24@sha256:" + "c" * 64, backup_base_image="docker.io/library/alpine:3.24@sha256:" + "e" * 64))
         self.lock["gosu"] = {"version": "1.19", "url": "https://github.com/tianon/gosu/archive/refs/tags/1.19.tar.gz", "sha256": "c" * 64}
         self.lock["go"] = {"version": "1.27.2", "base_image": "docker.io/library/golang:1.27.2-trixie@sha256:" + "d" * 64}
         (self.image / "templates/Dockerfile.gosu").write_text("FROM {{GO_BASE_IMAGE}} AS gosu-build\n")
-        for name in ("Dockerfile.debian", "Dockerfile.alpine", "Dockerfile.backup.debian", "Dockerfile.backup.alpine"):
+        for name in ("Dockerfile.debian", "Dockerfile.alpine", "Dockerfile.backup.alpine"):
             text = "FROM {{BACKUP_BASE_IMAGE}}\n# client-major={{POSTGRES_MAJOR}} version={{POSTGRES_VERSION}}\n" if ".backup." in name else "{{GOSU_BUILD}}\nFROM {{BASE_IMAGE}}\n# vector={{PGVECTOR_VERSION}}\n"
             (self.image / "templates" / name).write_text(text)
         for name, value in (("ROOT", self.root), ("IMAGE", self.image)):
@@ -41,11 +41,10 @@ class GenerationTests(unittest.TestCase):
         self.write_inputs()
         return dict(generate.rendered_files())
 
-    def test_resolves_distro_and_both_recipes(self):
-        self.metadata["variants"].append("alpine3.24")
-        self.lock["releases"].append(dict(self.lock["releases"][0], variant="alpine3.24", base_image="postgres:18.6-alpine3.24@sha256:" + "c" * 64, backup_base_image="docker.io/library/alpine:3.24@sha256:" + "e" * 64))
+    def test_resolves_two_runtime_recipes_and_one_alpine_backup(self):
         files = self.render()
-        self.assertEqual(len(files), 4)
+        self.assertEqual(len(files), 3)
+        self.assertNotIn(self.image / "generated/18/trixie/Dockerfile.backup", files)
         self.assertIn(self.image / "generated/18/alpine3.24/Dockerfile.backup", files)
         self.assertTrue(all("{{" not in text for text in files.values()))
         runtime = [text for path, text in files.items() if path.name == "Dockerfile"]
@@ -55,17 +54,29 @@ class GenerationTests(unittest.TestCase):
         self.assertIn("FROM docker.io/library/alpine:3.24@sha256:", files[self.image / "generated/18/alpine3.24/Dockerfile.backup"])
 
     def test_rejects_unpinned_or_wrong_backup_distribution(self):
-        for source in ["debian:trixie-slim", "docker.io/library/alpine:3.24@sha256:" + "e" * 64,
+        for source in ["alpine:3.24", "docker.io/library/alpine:3.23@sha256:" + "e" * 64,
                        "docker.io/library/debian:bookworm-slim@sha256:" + "e" * 64,
                        "docker.io/library/debian:trixie-slim@sha256:invalid"]:
             with self.subTest(source=source):
-                self.lock["releases"][0]["backup_base_image"] = source
+                self.lock["releases"][1]["backup_base_image"] = source
                 with self.assertRaisesRegex(ValueError, "backup base"):
                     self.render()
 
     def test_rejects_missing_backup_base(self):
-        del self.lock["releases"][0]["backup_base_image"]
+        del self.lock["releases"][1]["backup_base_image"]
         with self.assertRaisesRegex(ValueError, "backup base"):
+            self.render()
+
+    def test_rejects_unsupported_backup_distribution(self):
+        for variant in [None, "trixie", "alpine3.23"]:
+            with self.subTest(variant=variant):
+                self.metadata["backup_variant"] = variant
+                with self.assertRaisesRegex(ValueError, "supported Alpine"):
+                    self.render()
+
+    def test_runtime_distribution_cannot_request_backup_base(self):
+        self.lock["releases"][0]["backup_base_image"] = "docker.io/library/debian:trixie-slim@sha256:" + "e" * 64
+        with self.assertRaisesRegex(ValueError, "runtime-only"):
             self.render()
 
     def test_rejects_unpinned_source(self):
@@ -104,7 +115,7 @@ class GenerationTests(unittest.TestCase):
             self.render()
 
     def test_rejects_missing_supported_distribution(self):
-        self.metadata["variants"].append("alpine3.24")
+        self.lock["releases"].pop()
         with self.assertRaisesRegex(ValueError, "every supported"):
             self.render()
 
@@ -119,8 +130,8 @@ class GenerationTests(unittest.TestCase):
             self.assertEqual(generate.main(), 0)
         with patch("sys.argv", ["generate.py", "--check"]):
             self.assertEqual(generate.main(), 0)
-        stale = self.image / "generated/17/trixie/Dockerfile"
-        stale.parent.mkdir(parents=True)
+        stale = self.image / "generated/18/trixie/Dockerfile.backup"
+        stale.parent.mkdir(parents=True, exist_ok=True)
         stale.write_text("stale\n")
         with patch("sys.argv", ["generate.py", "--check"]):
             self.assertEqual(generate.main(), 1)

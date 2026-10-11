@@ -17,8 +17,14 @@ class AutomationTests(unittest.TestCase):
         metadata, lock = release.load()
         for item in lock["releases"]:
             runtime = release.tags(item["major"], item["variant"], "runtime")
-            backup = release.tags(item["major"], item["variant"], "backup")
-            self.assertEqual(backup, [tag + "-backup" for tag in runtime])
+            if item["variant"] == metadata["backup_variant"]:
+                backup = release.tags(item["major"], item["variant"], "backup")
+                self.assertIn("abruncloud/postgres:" + item["major"] + "-backup", backup)
+                self.assertIn("abruncloud/postgres:" + item["postgres_version"] + "-backup", backup)
+                self.assertTrue(all(tag.endswith("-backup") for tag in backup))
+            else:
+                with self.assertRaisesRegex(ValueError, "Unsupported image target"):
+                    release.tags(item["major"], item["variant"], "backup")
             self.assertIn("abruncloud/postgres:" + item["postgres_version"] + "-" + item["variant"], runtime)
             self.assertFalse(any("latest" in tag for tag in runtime))
             if item["variant"] == metadata["default_variant"]:
@@ -31,6 +37,8 @@ class AutomationTests(unittest.TestCase):
         entries = release.matrix()["include"]
         self.assertEqual({(entry["major"], entry["variant"], entry["arch"]) for entry in entries}, {
             (item["major"], item["variant"], arch) for item in lock["releases"] for arch in ["amd64", "arm64"]})
+        self.assertEqual(sum(entry["backup"] for entry in entries), 2)
+        self.assertTrue(all(entry["backup"] == (entry["variant"] == metadata["backup_variant"]) for entry in entries))
         self.assertTrue(all(entry["runner"].endswith("-arm") == (entry["arch"] == "arm64") for entry in entries))
 
     def test_registry_requires_both_architectures(self):
@@ -113,7 +121,7 @@ class HardeningDiscoveryTests(unittest.TestCase):
             image.mkdir(parents=True)
             current = {**self.lock(), "future_dependency": {"version": "1"}}
             (image / "versions.lock.json").write_text(json.dumps(current))
-            (image / "image.json").write_text(json.dumps({"supported_majors": ["18"], "variants": ["trixie"]}))
+            (image / "image.json").write_text(json.dumps({"supported_majors": ["18"], "variants": ["trixie"], "backup_variant": "alpine3.24"}))
             def fetch(url, headers=None):
                 if url.endswith("/library/postgres"):
                     return b"Tags: 18.6-trixie, 18-trixie\n", {}
@@ -178,6 +186,8 @@ class BackupBaseDiscoveryTests(unittest.TestCase):
         import copy
         updated = copy.deepcopy(current)
         for item in updated["releases"]:
+            if "backup_base_image" not in item:
+                continue
             item["backup_base_image"] = item["backup_base_image"].split("@", 1)[0] + "@sha256:" + "f" * 64
         self.assertEqual(discover.review_inputs(current), discover.review_inputs(updated))
 
@@ -208,10 +218,11 @@ class BackupBaseDiscoveryTests(unittest.TestCase):
             raise AssertionError("Unexpected source " + url)
         with patch.object(discover, "resolve", side_effect=resolve), patch.object(discover, "fetch", side_effect=fetch), patch.object(discover, "discover_hardening", return_value=(current["gosu"], current["go"])):
             updated = discover.discover()
-        self.assertIn(("debian", "trixie-slim"), seen)
+        self.assertNotIn(("debian", "trixie-slim"), seen)
         self.assertIn(("alpine", "3.24"), seen)
         self.assertEqual({item["major"] for item in updated["releases"]}, {"18"})
-        self.assertTrue(all(item["backup_base_image"].endswith("@sha256:" + "f" * 64) for item in updated["releases"]))
+        self.assertTrue(all(item["backup_base_image"].endswith("@sha256:" + "f" * 64) for item in updated["releases"] if item["variant"] == "alpine3.24"))
+        self.assertTrue(all("backup_base_image" not in item for item in updated["releases"] if item["variant"] == "trixie"))
 
 
 if __name__ == "__main__":
