@@ -25,6 +25,8 @@ jobs:
           python-version: '3.13'
       - name: Resolve upstream inputs and generate recipes
         id: discovery
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           previous=$(python3 tools/discover.py --review-inputs)
           python3 tools/discover.py

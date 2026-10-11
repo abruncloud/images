@@ -3,8 +3,10 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import urllib.request
+from urllib.parse import urlparse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +14,13 @@ ACCEPT = ", ".join(["application/vnd.oci.image.index.v1+json", "application/vnd.
 
 def fetch(url, headers=None):
     request = urllib.request.Request(url, headers={"User-Agent": "abruncloud-images-discovery", **(headers or {})})
+    origin = urlparse(url)
+    token = os.environ.get("GH_TOKEN")
+    if (token and origin.scheme == "https" and origin.hostname == "api.github.com"
+            and origin.port in {None, 443} and origin.username is None and origin.password is None):
+        # urllib redirects copy ordinary headers, but omit unredirected headers.
+        # Never forward the GitHub token, even to a same-host redirect.
+        request.add_unredirected_header("Authorization", "Bearer " + token)
     with urllib.request.urlopen(request, timeout=60) as response:
         return response.read(), response.headers
 
