@@ -112,7 +112,7 @@ jobs:
           retention-days: 90
       - name: Enforce runtime and backup security policy
         if: always() && steps.runtime.outputs.digest != '' && steps.backup.outputs.digest != ''
-        run: python3 tools/security_gate.py scan-runtime.json scan-backup.json
+        run: python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json scan-backup.json
       - name: Record qualified digests
         env:
           RUNTIME_DIGEST: ${{ steps.runtime.outputs.digest }}

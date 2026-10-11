@@ -60,4 +60,4 @@ jobs:
           retention-days: 90
       - name: Enforce runtime and backup security policy
         if: always()
-        run: python3 tools/security_gate.py scan-runtime.json scan-backup.json
+        run: python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json scan-backup.json
