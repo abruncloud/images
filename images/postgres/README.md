@@ -80,6 +80,8 @@ Repeat with `alpine3.24` to qualify Alpine. Generated Dockerfiles should not be 
 
 ## Updates and security
 
+The privilege-dropping helper `gosu` is rebuilt from a checksum-pinned upstream source release and its locked module dependencies using a digest-pinned, security-patched Go compiler. The compiler runs only in a build stage with automatic toolchain downloads disabled; the final images receive the static helper and its license. Its version and compiler version appear in image labels and the input lock. PostgreSQL's official entrypoint remains unchanged. Rebuilding this helper reduces stale compiler findings; publication still requires rescanning the exact artifacts and passing the configured security gate.
+
 Automated discovery proposes upstream patch, base-digest and pgvector changes. Publication follows the repository's checks and release policy; discovery does not update running containers. Major database upgrades and extension catalog upgrades require deliberate migration steps. Do not downgrade a data directory simply by selecting an older image.
 
 See [SECURITY.md](../../SECURITY.md) for reporting vulnerabilities. This packaging includes software under separate upstream licenses; pgvector's license is included at `/usr/share/doc/pgvector/LICENSE` in the runtime image.

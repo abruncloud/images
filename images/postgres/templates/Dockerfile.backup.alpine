@@ -1,5 +1,10 @@
 # Generated from an immutable official PostgreSQL release.
+{{GOSU_BUILD}}
 FROM {{BASE_IMAGE}}
+COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
+COPY --from=gosu-build /out/LICENSE /usr/share/doc/gosu/LICENSE
+ENV GOSU_VERSION={{GOSU_VERSION}}
+LABEL io.abruncloud.gosu.version="{{GOSU_VERSION}}" io.abruncloud.gosu.go.version="{{GO_VERSION}}"
 LABEL org.opencontainers.image.title="PostgreSQL backup tools" \
       org.opencontainers.image.version="{{POSTGRES_VERSION}}" \
       org.opencontainers.image.description="Native logical and physical PostgreSQL backup tools with file-based credentials"
