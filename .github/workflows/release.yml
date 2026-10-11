@@ -28,21 +28,20 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
-    environment: dockerhub
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
           persist-credentials: false
-      - name: Require publication credentials
-        env:
-          USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: test -n "$USERNAME" && test -n "$TOKEN"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
-      - uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a
+      - name: Authenticate CI candidate registry
+        uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
       - id: runtime
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
@@ -50,7 +49,7 @@ jobs:
           file: ${{ matrix.directory }}/Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: true
-          tags: abruncloud/postgres:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          tags: ghcr.io/abruncloud/postgres-ci:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
           sbom: true
           provenance: mode=max
           labels: |
@@ -63,7 +62,7 @@ jobs:
           file: ${{ matrix.directory }}/Dockerfile.backup
           platforms: linux/${{ matrix.arch }}
           push: true
-          tags: abruncloud/postgres:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-backup
+          tags: ghcr.io/abruncloud/postgres-ci:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-backup
           sbom: true
           provenance: mode=max
           labels: |
@@ -71,8 +70,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
       - name: Test exact published candidates on native architecture
         env:
-          RUNTIME: abruncloud/postgres@${{ steps.runtime.outputs.digest }}
-          BACKUP: abruncloud/postgres@${{ steps.backup.outputs.digest }}
+          RUNTIME: ghcr.io/abruncloud/postgres-ci@${{ steps.runtime.outputs.digest }}
+          BACKUP: ghcr.io/abruncloud/postgres-ci@${{ steps.backup.outputs.digest }}
         run: |
           docker pull "$RUNTIME"
           docker pull "$BACKUP"
@@ -83,7 +82,7 @@ jobs:
         uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
         with:
           version: v0.75.0
-          image-ref: abruncloud/postgres@${{ steps.runtime.outputs.digest }}
+          image-ref: ghcr.io/abruncloud/postgres-ci@${{ steps.runtime.outputs.digest }}
           format: json
           output: scan-runtime.json
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
@@ -95,7 +94,7 @@ jobs:
         uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
         with:
           version: v0.75.0
-          image-ref: abruncloud/postgres@${{ steps.backup.outputs.digest }}
+          image-ref: ghcr.io/abruncloud/postgres-ci@${{ steps.backup.outputs.digest }}
           format: json
           output: scan-backup.json
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
@@ -136,6 +135,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      packages: write
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
@@ -145,6 +145,19 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Authenticate CI candidate registry
+        uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install verified cross-registry copier
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/crane.tar.gz" https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz
+          printf '0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0  %s\n' "$RUNNER_TEMP/crane.tar.gz" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/crane-bin"
+          tar -xzf "$RUNNER_TEMP/crane.tar.gz" -C "$RUNNER_TEMP/crane-bin" crane
+          echo "$RUNNER_TEMP/crane-bin" >> "$GITHUB_PATH"
       - uses: sigstore/cosign-installer@af595e623eec1ede52d6322f53b635d5def0a95a
         with:
           cosign-release: v3.1.3

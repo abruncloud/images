@@ -8,12 +8,22 @@ from pathlib import Path
 from release import load, tags
 
 REPOSITORY = "abruncloud/postgres"
+CANDIDATE_REPOSITORY = "ghcr.io/abruncloud/postgres-ci"
 
 def command(*args):
     return subprocess.check_output(args, text=True).strip()
 
 def current_main():
     return command("gh", "api", "repos/" + os.environ["REPOSITORY"] + "/commits/main", "--jq", ".sha")
+
+def copy_verified(source, destination):
+    """Copy manifests and blobs by digest without creating any public tag."""
+    expected = source.rsplit("@", 1)[1]
+    command("crane", "copy", source, destination)
+    observed = command("crane", "digest", destination)
+    if observed != expected:
+        raise ValueError("Cross-registry digest changed during copy")
+
 
 def main():
     sha = os.environ["EXPECTED_SHA"]
@@ -32,24 +42,30 @@ def main():
     for release in lock["releases"]:
         for target in ["runtime", "backup"]:
             refs = []
+            candidate_refs = []
             for arch in ["amd64", "arm64"]:
                 path = Path("digests") / (release["major"] + "-" + release["variant"] + "-" + target + "-" + arch)
                 digest = path.read_text().strip()
                 if not re.fullmatch(r"sha256:[a-f0-9]{64}", digest):
                     raise ValueError("Invalid qualified digest: " + str(path))
+                candidate_refs.append(CANDIDATE_REPOSITORY + "@" + digest)
                 refs.append(REPOSITORY + "@" + digest)
+                copy_verified(candidate_refs[-1], refs[-1])
                 command("cosign", "sign", "--yes", refs[-1])
-            candidate = REPOSITORY + ":build-" + build_id + "-" + release["major"] + "-" + release["variant"] + ("-backup" if target == "backup" else "")
-            command("docker", "buildx", "imagetools", "create", "--tag", candidate, *refs)
+            candidate = CANDIDATE_REPOSITORY + ":build-" + build_id + "-" + release["major"] + "-" + release["variant"] + ("-backup" if target == "backup" else "")
+            command("docker", "buildx", "imagetools", "create", "--tag", candidate, *candidate_refs)
             # Obtain the authoritative index digest from registry metadata.
             info = json.loads(command("docker", "buildx", "imagetools", "inspect", candidate, "--format", "{{json .Manifest}}"))
             digest = info["digest"]
             if not re.fullmatch(r"sha256:[a-f0-9]{64}", digest):
                 raise ValueError("Invalid multi-platform digest")
+            candidate_reference = CANDIDATE_REPOSITORY + "@" + digest
             reference = REPOSITORY + "@" + digest
+            copy_verified(candidate_reference, reference)
             command("cosign", "sign", "--yes", reference)
             outputs.append({"major": release["major"], "variant": release["variant"], "target": target,
-                            "digest": digest, "native_refs": refs, "tags": tags(release["major"], release["variant"], target)})
+                            "digest": digest, "native_refs": refs, "candidate_native_refs": candidate_refs,
+                            "candidate_ref": candidate_reference, "candidate_archive_tag": candidate, "tags": tags(release["major"], release["variant"], target)})
     if current_main() != sha:
         raise SystemExit("Refusing alias promotion: main advanced during signing")
     for output in outputs:
@@ -58,7 +74,7 @@ def main():
                     REPOSITORY + "@" + output["digest"])
     Path("release.json").write_text(json.dumps({"schema_version": 1, "source_commit": sha, "build_id": build_id,
                                                "workflow_run_id": run_id, "workflow_run_attempt": attempt,
-                                               "inputs": lock, "images": outputs}, indent=2) + "\n")
+                                               "inputs": lock, "candidate_repository": CANDIDATE_REPOSITORY, "images": outputs}, indent=2) + "\n")
 
 if __name__ == "__main__":
     main()
