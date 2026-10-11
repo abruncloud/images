@@ -48,16 +48,18 @@ jobs:
           load: true
           tags: abrun-test:runtime
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        if: matrix.backup
         with:
           context: .
           file: ${{ matrix.directory }}/Dockerfile.backup
           platforms: linux/${{ matrix.arch }}
           load: true
           tags: abrun-test:backup
-      - name: Native runtime and recovery qualification
-        run: |
-          bash tests/run.sh abrun-test:runtime
-          bash tests/run-backup.sh abrun-test:backup abrun-test:runtime
+      - name: Native runtime qualification
+        run: bash tests/run.sh abrun-test:runtime
+      - name: Native backup and recovery qualification
+        if: matrix.backup
+        run: bash tests/run-backup.sh abrun-test:backup abrun-test:runtime
   required:
     if: always()
     needs: [metadata, native-test]

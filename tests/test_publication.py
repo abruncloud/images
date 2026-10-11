@@ -18,9 +18,9 @@ class PublicationTests(unittest.TestCase):
         Path("digests").mkdir()
         for target in ["runtime", "backup"]:
             for arch in ["amd64", "arm64"]:
-                Path("digests", f"18-trixie-{target}-{arch}").write_text("sha256:" + "a" * 64)
+                Path("digests", f"18-alpine3.24-{target}-{arch}").write_text("sha256:" + "a" * 64)
         self.env = {"EXPECTED_SHA": "b" * 40, "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
-        self.lock = {"schema_version": 1, "pgvector": {"version": "test"}, "releases": [{"major": "18", "variant": "trixie"}]}
+        self.lock = {"schema_version": 1, "pgvector": {"version": "test"}, "releases": [{"major": "18", "variant": "alpine3.24"}]}
         self.calls = []
 
     def command(self, *args):
@@ -32,7 +32,7 @@ class PublicationTests(unittest.TestCase):
         return ""
 
     def execute(self, main_refs=None, command=None):
-        with patch.dict(os.environ, self.env), patch.object(publish, "current_main", side_effect=main_refs or ["b" * 40, "b" * 40]), patch.object(publish, "load", return_value=({}, self.lock)), patch.object(publish, "tags", side_effect=lambda major, variant, target: ["abruncloud/postgres:18" + ("-backup" if target == "backup" else "")]), patch.object(publish, "command", side_effect=command or self.command):
+        with patch.dict(os.environ, self.env), patch.object(publish, "current_main", side_effect=main_refs or ["b" * 40, "b" * 40]), patch.object(publish, "load", return_value=({"backup_variant": "alpine3.24"}, self.lock)), patch.object(publish, "tags", side_effect=lambda major, variant, target: ["abruncloud/postgres:18" + ("-backup" if target == "backup" else "")]), patch.object(publish, "command", side_effect=command or self.command):
             publish.main()
 
     def test_release_records_build_identity_inputs_and_exact_digests(self):
@@ -54,6 +54,15 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(len(signs), 6)
         self.assertGreater(min(promotions), max(signs))
 
+    def test_runtime_only_variant_does_not_publish_backup(self):
+        self.lock["releases"][0]["variant"] = "trixie"
+        for arch in ["amd64", "arm64"]:
+            Path("digests", f"18-trixie-runtime-{arch}").write_text("sha256:" + "a" * 64)
+        self.execute()
+        record = json.loads(Path("release.json").read_text())
+        self.assertEqual([item["target"] for item in record["images"]], ["runtime"])
+        self.assertFalse(any("backup" in argument for call in self.calls for argument in call))
+
     def test_main_advancing_before_promotion_blocks_all_aliases(self):
         with self.assertRaisesRegex(SystemExit, "main advanced during signing"):
             self.execute(main_refs=["b" * 40, "d" * 40])
@@ -61,7 +70,7 @@ class PublicationTests(unittest.TestCase):
         self.assertFalse(Path("release.json").exists())
 
     def test_missing_architecture_prevents_promotion(self):
-        Path("digests/18-trixie-runtime-arm64").unlink()
+        Path("digests/18-alpine3.24-runtime-arm64").unlink()
         with self.assertRaises(FileNotFoundError):
             self.execute()
         self.assertFalse(any("--prefer-index=false" in call for call in self.calls))

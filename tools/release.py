@@ -13,20 +13,25 @@ def load():
     return metadata, lock
 
 def matrix():
-    _, lock = load()
+    metadata, lock = load()
     entries = []
     for release in lock["releases"]:
         for arch in ["amd64", "arm64"]:
-            entries.append({**release, "arch": arch, "runner": "ubuntu-24.04" + ("-arm" if arch == "arm64" else ""),
+            entries.append({**release, "backup": release["variant"] == metadata["backup_variant"], "arch": arch, "runner": "ubuntu-24.04" + ("-arm" if arch == "arm64" else ""),
                             "directory": "images/postgres/generated/" + release["major"] + "/" + release["variant"]})
     return {"include": entries}
+
+def targets(metadata, release):
+    return ["runtime", "backup"] if release["variant"] == metadata["backup_variant"] else ["runtime"]
 
 def tags(major, variant, target):
     metadata, lock = load()
     release = next(item for item in lock["releases"] if item["major"] == major and item["variant"] == variant)
+    if target not in targets(metadata, release):
+        raise ValueError("Unsupported image target for distribution")
     version = release["postgres_version"]
     values = [version + "-" + variant, major + "-" + variant]
-    if variant == metadata["default_variant"]:
+    if (target == "runtime" and variant == metadata["default_variant"]) or target == "backup":
         values += [version, major]
     if variant == metadata["default_alpine_variant"]:
         values += [version + "-alpine", major + "-alpine"]

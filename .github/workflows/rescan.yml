@@ -39,11 +39,11 @@ jobs:
           exit-code: '0'
           ignore-unfixed: false
       - name: Rescan backup against current vulnerability database
-        if: always()
+        if: always() && matrix.backup
         uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
         with:
           version: v0.75.0
-          image-ref: abruncloud/postgres:${{ matrix.postgres_version }}-${{ matrix.variant }}-backup
+          image-ref: abruncloud/postgres:${{ matrix.postgres_version }}-backup
           output: scan-backup.json
           format: json
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
@@ -58,6 +58,13 @@ jobs:
           path: scan-*.json
           if-no-files-found: warn
           retention-days: 90
-      - name: Enforce runtime and backup security policy
+      - name: Enforce security policy for every expected artifact
         if: always()
-        run: python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json scan-backup.json
+        env:
+          BACKUP_ENABLED: ${{ matrix.backup }}
+        run: |
+          if [ "$BACKUP_ENABLED" = true ]; then
+            python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json scan-backup.json
+          else
+            python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json
+          fi

@@ -13,7 +13,7 @@ For a resolved PostgreSQL version `18.x`, runtime aliases are:
 | `18`, `18.x` | `18-alpine`, `18.x-alpine` |
 | `18-trixie`, `18.x-trixie` | `18-alpine3.24`, `18.x-alpine3.24` |
 
-Backup variants use the same aliases with `-backup` appended, such as `18-backup` or `18-alpine3.24-backup`. They contain client tools only, with no PostgreSQL server or initialization entrypoint.
+The single backup artifact uses Alpine for both supported architectures. Its aliases are `18-backup`, `18.x-backup`, `18-alpine-backup`, `18.x-alpine-backup`, `18-alpine3.24-backup`, and `18.x-alpine3.24-backup`; every alias names the same qualified Alpine client image. Debian runtime aliases remain available; Debian backup builds and `-trixie-backup` aliases are no longer published. The backup image contains client tools only, with no PostgreSQL server or initialization entrypoint.
 
 Tags can receive a qualified rebuild when base packages or pgvector change. Pin `abruncloud/postgres@sha256:...` when reproducibility matters. Published release records identify the exact input versions and image digests. Existing deployments do not update themselves.
 
@@ -60,7 +60,7 @@ Size memory settings and connection limits for your actual container resources a
 
 ## Backup images
 
-Backup images are independently packaged client artifacts. They include `pg_dump`, `pg_restore`, `pg_basebackup`, `pg_verifybackup`, `pg_waldump`, and `psql`, the shared libraries those tools require, and the small `postgres-backup` wrapper. They contain no `postgres`, `initdb`, `pg_ctl`, or upstream server entrypoint, and declare no `PGDATA`, persistent volumes, or exposed database port. No extension binaries are needed in a backup client: logical restoration and physical recovery use extensions installed in the destination runtime.
+The Alpine backup image is an independently packaged client artifact. It includes `pg_dump`, `pg_restore`, `pg_basebackup`, `pg_verifybackup`, `pg_waldump`, and `psql`, the shared libraries those tools require, and the small `postgres-backup` wrapper. It contains no `postgres`, `initdb`, `pg_ctl`, or upstream server entrypoint, and declares no `PGDATA`, persistent volumes, or exposed database port. No extension binaries are needed in a backup client: logical restoration and physical recovery use extensions installed in the destination runtime.
 
 The wrapper uses native libpq connection and TLS settings, including `PGHOST`, `PGPORT`, `PGUSER`, `PGDATABASE`, `PGSSLMODE`, and `PGSSLROOTCERT`. `PGHOST_FILE`, `PGPORT_FILE`, `PGUSER_FILE`, `PGDATABASE_FILE`, and `PGPASSWORD_FILE` read mounted secrets; a variable and its file alternative cannot both be set. Passwords are staged in a private temporary password file, removed after the native client exits. Commands are `dump OUTPUT`, `restore INPUT`, `basebackup DIRECTORY`, and `verify DIRECTORY`; native tool options can follow. All six tools can also be invoked by name through the wrapper. See `--help` for usage.
 
@@ -88,12 +88,14 @@ From the repository root:
 ```sh
 python3 tools/generate.py --check
 docker build -f images/postgres/generated/18/trixie/Dockerfile -t postgres-runtime:test .
-docker build -f images/postgres/generated/18/trixie/Dockerfile.backup -t postgres-backup:test .
+docker build -f images/postgres/generated/18/alpine3.24/Dockerfile -t postgres-alpine-runtime:test .
+docker build -f images/postgres/generated/18/alpine3.24/Dockerfile.backup -t postgres-backup:test .
 tests/run.sh postgres-runtime:test
-tests/run-backup.sh postgres-backup:test postgres-runtime:test
+tests/run.sh postgres-alpine-runtime:test
+tests/run-backup.sh postgres-backup:test postgres-alpine-runtime:test
 ```
 
-Repeat with `alpine3.24` to qualify Alpine. Generated Dockerfiles should not be edited directly: update templates or resolved inputs, then run `python3 tools/generate.py`. CI checks drift and runs native runtime and backup/recovery tests for both supported architectures before publication. The backup harness verifies the client-only artifact boundary, verify-full TLS with file credentials, logical vector restoration, full physical/WAL verification with corrupted-WAL rejection, independent recovery with an actual HNSW index scan, and client cancellation followed by explicit fixture administrator cleanup.
+Runtime builds cover Debian and Alpine; the backup is built and qualified once per architecture against the Alpine runtime. The client can connect to PostgreSQL servers on either distribution. Generated Dockerfiles should not be edited directly: update templates or resolved inputs, then run `python3 tools/generate.py`. CI checks drift and runs native runtime tests for both distributions and Alpine backup/recovery tests for both supported architectures before publication. The backup harness verifies the client-only artifact boundary, verify-full TLS with file credentials, logical vector restoration, full physical/WAL verification with corrupted-WAL rejection, independent recovery with an actual HNSW index scan, and client cancellation followed by explicit fixture administrator cleanup.
 
 ## Updates and security
 

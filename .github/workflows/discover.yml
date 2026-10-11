@@ -23,6 +23,17 @@ jobs:
       - uses: actions/setup-python@06da6279cdbca41027908073e81a4544dc79c06b
         with:
           python-version: '3.13'
+      - name: Verify automatic merge branch protection
+        if: vars.AUTO_UPDATE_PRS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          checks=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq 'if .protected == true then .protection.required_status_checks.contexts[] else empty end')
+          if ! printf '%s\n' "$checks" | grep -Fxq required; then
+            echo 'Automatic merge requires main branch protection with the required CI check.' >&2
+            exit 1
+          fi
       - name: Resolve upstream inputs and generate recipes
         id: discovery
         env:
@@ -108,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           branch=automation/postgres-updates
-          checks=$(gh api "repos/$GITHUB_REPOSITORY/branches/main/protection/required_status_checks" --jq '.contexts[]')
+          checks=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq 'if .protected == true then .protection.required_status_checks.contexts[] else empty end')
           if ! printf '%s\n' "$checks" | grep -Fxq required; then
             echo 'Automatic merge requires main branch protection with the required CI check.' >&2
             exit 1
