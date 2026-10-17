@@ -128,12 +128,7 @@ func run(ctx context.Context, c configuration, query, queryID string, timeout ti
 		}
 		fields := make([]string, len(values))
 		for i, v := range values {
-			value := reflect.ValueOf(v).Elem().Interface()
-			if b, ok := value.([]byte); ok {
-				fields[i] = string(b)
-			} else {
-				fields[i] = fmt.Sprint(value)
-			}
+			fields[i] = formatValue(reflect.ValueOf(v).Elem())
 		}
 		line := strings.Join(fields, "\t") + "\n"
 		if len(line) > outputLimit-written {
@@ -146,6 +141,19 @@ func run(ctx context.Context, c configuration, query, queryID string, timeout ti
 		}
 	}
 	return rows.Err()
+}
+
+func formatValue(value reflect.Value) string {
+	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return `\N`
+		}
+		value = value.Elem()
+	}
+	if b, ok := value.Interface().([]byte); ok {
+		return string(b)
+	}
+	return fmt.Sprint(value.Interface())
 }
 
 func main() {

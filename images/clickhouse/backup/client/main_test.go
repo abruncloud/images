@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -46,5 +47,16 @@ func TestConfigInputIsBounded(t *testing.T) {
 	}
 	if _, err := readConfig(file); err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatal("oversized configuration accepted")
+	}
+}
+
+func TestNullableScalarOutput(t *testing.T) {
+	value := uint64(42)
+	if formatValue(reflect.ValueOf(&value)) != "42" {
+		t.Fatal("nullable value was printed as a pointer")
+	}
+	var absent *uint64
+	if formatValue(reflect.ValueOf(absent)) != `\N` {
+		t.Fatal("null output is not explicit")
 	}
 }
