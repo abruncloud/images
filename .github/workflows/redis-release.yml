@@ -68,6 +68,8 @@ jobs:
           bash tests/run-redis-backup.sh "$BACKUP" "$RUNTIME"
       - name: Scan backup
         if: always() && matrix.backup && steps.backup.outputs.digest != ''
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
         uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
         with:
           version: v0.75.0
@@ -78,6 +80,18 @@ jobs:
           scanners: vuln
           exit-code: '0'
           ignore-unfixed: false
+      - name: Verify scanned native architecture
+        if: always() && matrix.backup
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          report = json.load(open("scan-backup.json"))
+          observed = report.get("Metadata", {}).get("ImageConfig", {}).get("architecture")
+          if observed != os.environ["EXPECTED_ARCH"]:
+              raise SystemExit("Scanner architecture mismatch: " + str(observed))
+          PYTHON
       - name: Retain complete vulnerability reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

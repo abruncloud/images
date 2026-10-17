@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '41 */6 * * *'
   workflow_dispatch:
+    inputs:
+      qualify_update_flow:
+        description: Create an owned whitespace-only qualification PR; never auto-merge it
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -12,6 +17,8 @@ jobs:
   discover:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      UPDATE_BRANCH: ${{ inputs.qualify_update_flow == true && 'automation/redis-update-qualification' || 'automation/redis-updates' }}
     permissions:
       contents: write
       pull-requests: write
@@ -40,10 +47,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           previous=$(python3 tools/redis_discover.py --review-inputs)
-          python3 tools/redis_discover.py
+          if [ "${{ inputs.qualify_update_flow }}" = true ]; then
+            # A manual, harmless trigger qualification; exact image inputs stay identical.
+            python3 -c 'from pathlib import Path; p=Path("images/redis/versions.lock.json"); p.write_text(p.read_text()+"\n")'
+          else
+            python3 tools/redis_discover.py
+          fi
           python3 tools/redis_generate.py
           current=$(python3 tools/redis_discover.py --review-inputs)
-          if [ "$previous" = "$current" ]; then echo "routine=true" >> "$GITHUB_OUTPUT"; else echo "routine=false" >> "$GITHUB_OUTPUT"; fi
+          if [ "$previous" = "$current" ] && [ "${{ inputs.qualify_update_flow }}" != true ]; then echo "routine=true" >> "$GITHUB_OUTPUT"; else echo "routine=false" >> "$GITHUB_OUTPUT"; fi
           if git diff --quiet; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
       - name: Retain proposed update inputs
         if: steps.discovery.outputs.changed == 'true'
@@ -74,7 +86,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          branch=automation/redis-updates
+          branch="$UPDATE_BRANCH"
           git config user.name 'abruncloud-images-bot'
           git config user.email 'images-bot@users.noreply.github.com'
           git switch -c "$branch"
@@ -85,29 +97,33 @@ jobs:
           git push "--force-with-lease=refs/heads/$branch:$lease" origin "HEAD:$branch"
           count=$(gh pr list --head "$branch" --state open --json number --jq 'length')
           if [ "$count" = 0 ]; then
-            gh pr create --head "$branch" --title 'Update Redis image inputs' --body 'Automated upstream discovery. Review Redis patch releases and reviewed Alpine base digest changes; native builds and recovery tests must pass before merge.'
+            gh pr create --head "$branch" --title 'Update Redis image inputs' --body 'Automated Redis input discovery or manual whitespace-only flow qualification. Native pull_request checks must pass before merge. GitHub may require maintainer approval to run bot-created PR workflows; workflow_dispatch checks are not a substitute.'
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Dispatch and await native qualification
+      - name: Await eligible pull request qualification
         if: steps.update.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ steps.update.outputs.head_sha }}
         run: |
           set -euo pipefail
-          branch=automation/redis-updates
-          # GITHUB_TOKEN-created PRs do not trigger pull_request workflows.
-          # Explicit workflow_dispatch is permitted and runs checks on this head.
-          gh workflow run check.yml --ref "$branch"
+          branch="$UPDATE_BRANCH"
+          # GITHUB_TOKEN-created PRs generate approval-required pull_request runs.
+          # workflow_dispatch checks are not accepted as proof for protected PRs.
           run_id=
           for attempt in $(seq 1 30); do
-            run_id=$(gh run list --workflow check.yml --branch "$branch" --event workflow_dispatch --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$HEAD_SHA\") | .databaseId" | head -n 1)
+            run_id=$(gh run list --workflow check.yml --branch "$branch" --event pull_request --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$HEAD_SHA\") | .databaseId" | head -n 1)
             if [ -n "$run_id" ]; then break; fi
             sleep 5
           done
           if [ -z "$run_id" ]; then
-            echo 'Timed out finding the dispatched qualification run for this exact commit.' >&2
+            echo 'No eligible pull_request CI run found for the exact update head. Open the update PR, approve workflows if GitHub requires it, then merge only after the required check passes.' >&2
+            exit 1
+          fi
+          status=$(gh run view "$run_id" --json status,conclusion --jq 'if .status == "waiting" or .conclusion == "action_required" then "approval_required" else .status end')
+          if [ "$status" = approval_required ]; then
+            echo 'GitHub requires maintainer workflow approval. Approve workflows on the update PR; merge only after its actual pull_request required check passes. No workflow_dispatch or administrator bypass is used.' >&2
             exit 1
           fi
           gh run watch "$run_id" --exit-status --interval 15
@@ -118,7 +134,7 @@ jobs:
           HEAD_SHA: ${{ steps.update.outputs.head_sha }}
         run: |
           set -euo pipefail
-          branch=automation/redis-updates
+          branch="$UPDATE_BRANCH"
           checks=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq 'if .protected == true then .protection.required_status_checks.contexts[] else empty end')
           if ! printf '%s\n' "$checks" | grep -Fxq required; then
             echo 'Automatic merge requires main branch protection with the required CI check.' >&2

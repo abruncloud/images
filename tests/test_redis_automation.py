@@ -35,3 +35,16 @@ class RedisAutomationTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/check.yml").read_text()
         self.assertIn("needs: [metadata, native-test, mysql-native-test, redis-native-test]", workflow)
         self.assertIn('test "$REDIS_TESTS" = success', workflow)
+
+    def test_native_scan_identity_is_explicit(self):
+        for name in ["release", "rescan"]:
+            workflow = (ROOT / f".github/workflows/redis-{name}.yml").read_text()
+            self.assertIn("TRIVY_PLATFORM: linux/${{ matrix.arch }}", workflow)
+            self.assertIn('report.get("Metadata", {}).get("ImageConfig", {}).get("architecture")', workflow)
+    def test_update_merging_requires_actual_pr_event_and_manual_exercise_never_merges(self):
+        workflow = (ROOT / ".github/workflows/redis-discover.yml").read_text()
+        self.assertIn("--event pull_request", workflow)
+        self.assertNotIn("gh workflow run check.yml", workflow)
+        self.assertIn("qualify_update_flow", workflow)
+        self.assertIn("approval_required", workflow)
+        self.assertIn('&& [ "${{ inputs.qualify_update_flow }}" != true ]', workflow)

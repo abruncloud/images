@@ -108,4 +108,15 @@ remain unchanged.
 
 Discovery follows only the explicitly reviewed `8.2` line and Alpine 3.22, using
 the official-image source Dockerfile checksum. Patch/source/base changes open
-qualified update PRs; major/minor lines and distribution changes require review.
+update PRs with actual `pull_request` native qualification. GitHub may require a
+maintainer to select **Approve workflows to run** on bot-created PRs. When that
+approval is required, unattended patch merging is gated: approve the actual PR
+workflow and merge only after the protected `required` check passes. A dispatched
+workflow is never treated as eligible proof and branch protection is not bypassed.
+Major/minor lines and distribution changes require review.
+
+Maintainers can run `redis-discover.yml` with `qualify_update_flow=true` to create
+an owned, whitespace-only lockfile PR and verify GitHub's event/approval/check
+path without changing any image input. The qualification PR never auto-merges;
+close it after inspecting the actual PR check result. Daily package refresh and
+native/security-gated publication remain fully automatic.
