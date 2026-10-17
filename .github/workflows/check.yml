@@ -182,6 +182,46 @@ jobs:
             org.opencontainers.image.source=https://github.com/abruncloud/images
             org.opencontainers.image.revision=${{ github.sha }}
           tags: ghcr.io/abruncloud/mongodb-ci:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-backup
+      - name: Scan backup
+        if: always() && steps.candidate.outputs.digest != ''
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: ghcr.io/abruncloud/mongodb-ci@${{ steps.candidate.outputs.digest }}
+          format: json
+          output: scan-backup.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          scanners: vuln
+          exit-code: '0'
+          ignore-unfixed: false
+      - name: Verify scanned native architecture
+        if: always() && steps.candidate.outputs.digest != ''
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          report = json.load(open("scan-backup.json"))
+          observed = report.get("Metadata", {}).get("ImageConfig", {}).get("architecture")
+          if observed != os.environ["EXPECTED_ARCH"]:
+              raise SystemExit("Scanner architecture mismatch: " + str(observed))
+          PYTHON
+      - name: Retain complete vulnerability reports
+        if: always() && steps.candidate.outputs.digest != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: security-mongodb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          path: scan-*.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Enforce security policy for every expected artifact
+        if: always() && steps.candidate.outputs.digest != ''
+        env:
+          BACKUP_ENABLED: ${{ matrix.backup }}
+        run: |
+          python3 tools/security_gate.py --policy images/mongodb/security-policy.json scan-backup.json
       - name: Load exact native candidate
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: docker pull ghcr.io/abruncloud/mongodb-ci@${{ steps.candidate.outputs.digest }}
@@ -231,6 +271,46 @@ jobs:
             org.opencontainers.image.source=https://github.com/abruncloud/images
             org.opencontainers.image.revision=${{ github.sha }}
           tags: ghcr.io/abruncloud/mongodb-exporter-ci:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-runtime
+      - name: Scan exporter
+        if: always() && steps.candidate.outputs.digest != ''
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: ghcr.io/abruncloud/mongodb-exporter-ci@${{ steps.candidate.outputs.digest }}
+          format: json
+          output: scan-runtime.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          scanners: vuln
+          exit-code: '0'
+          ignore-unfixed: false
+      - name: Verify scanned native architecture
+        if: always() && steps.candidate.outputs.digest != ''
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          report = json.load(open("scan-runtime.json"))
+          observed = report.get("Metadata", {}).get("ImageConfig", {}).get("architecture")
+          if observed != os.environ["EXPECTED_ARCH"]:
+              raise SystemExit("Scanner architecture mismatch: " + str(observed))
+          PYTHON
+      - name: Retain complete vulnerability reports
+        if: always() && steps.candidate.outputs.digest != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: security-mongodb-exporter-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          path: scan-*.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Enforce security policy for every expected artifact
+        if: always() && steps.candidate.outputs.digest != ''
+        env:
+          RUNTIME_ENABLED: ${{ true }}
+        run: |
+          python3 tools/security_gate.py --policy images/mongodb-exporter/security-policy.json scan-runtime.json
       - name: Load exact native candidate
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: docker pull ghcr.io/abruncloud/mongodb-exporter-ci@${{ steps.candidate.outputs.digest }}

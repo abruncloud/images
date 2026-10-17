@@ -23,8 +23,8 @@ RUN apt-get update \
  && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends ca-certificates curl jq python3 python3-pymongo python3-yaml tar gzip coreutils util-linux tini libgssapi-krb5-2 libssl3t64 \
  && rm -rf /var/lib/apt/lists/* \
- && groupadd --gid 10001 backup && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin backup \
- && mkdir /backup && chown backup:backup /backup && chmod 0700 /backup
+ && groupadd --gid 10001 imagebackup && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin imagebackup \
+ && mkdir /backup && chown 10001:10001 /backup && chmod 0700 /backup
 COPY --from=tools /licenses/ /usr/share/licenses/mongodb-database-tools/
 COPY --from=tools /out/ /usr/local/bin/
 COPY images/mongodb/backup/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
