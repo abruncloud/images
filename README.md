@@ -5,9 +5,13 @@ Images work independently of the Abrun platform and preserve documented upstream
 runtime conventions.
 
 Database tooling includes [PostgreSQL](images/postgres/README.md),
-[MySQL client backups](images/mysql/README.md), and
-[Redis client backups](images/redis/README.md). Redis and MySQL use official server
-images and generic, separately qualified client-only backup images. Existing
+[MySQL client backups](images/mysql/README.md),
+[Redis client backups](images/redis/README.md),
+[ClickHouse client backups](images/clickhouse/README.md), and
+[MongoDB client backups](images/mongodb/README.md). These engines use official server
+images and generic, separately qualified client-only backup images.
+A minimal [MongoDB exporter](images/mongodb-exporter/README.md) is maintained
+separately for generic secret bootstraps and private loopback diagnostics. Existing
 PostgreSQL server recipes remain available.
 
 ## Repository layout
@@ -49,7 +53,7 @@ See [SECURITY.md](SECURITY.md) for reporting and maintenance policy.
 ## GitHub Actions setup
 
 Configure repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` with push
-access to `abruncloud/postgres`. The release workflow uses the `dockerhub`
+access to each enabled `abruncloud/<image>` repository. The release workflow uses the `dockerhub`
 environment; add approval restrictions there if desired.
 
 Protect `main` with the `required` CI status check before enabling routine update
@@ -65,7 +69,9 @@ security findings, or stale source commits prevent public alias promotion.
 
 Publication and daily rescans retain complete runtime and backup vulnerability reports as GitHub Actions artifacts, even when a scan fails. The gate defaults to strict HIGH/CRITICAL blocking. Publication and daily rescans explicitly select the reviewed actionable policy with `python3 tools/security_gate.py --policy images/postgres/security-policy.json scan-runtime.json scan-backup.json`: fixed HIGH findings and all CRITICAL findings block; unfixed HIGH findings remain reported as deferred risks. An unfixed CRITICAL finding can pass only through an exact, unexpired vendor assessment matching its CVE, package, installed version, OS family/major and OS package scan type. Assessments record risk acceptance, not proof that an image is safe or unaffected. Missing or invalid reports and malformed policies fail closed.
 
-CI candidate and archive tags live exclusively in `ghcr.io/abruncloud/postgres-ci`; Docker Hub receives only documented PostgreSQL version/distribution runtime and backup tags. Native candidates are tested and scanned by immutable GHCR digest. After all variants qualify, pinned crane copies native and combined indexes, including their layers and embedded SBOM/provenance manifests, into Docker Hub by digest without creating staging tags. Each copied digest is verified and signed in Docker Hub before any public version alias moves. Release records retain both candidate and final references. CI uses the built-in GitHub token with package-write permission for GHCR; Docker Hub credentials are restricted to promotion.
+CI candidate and archive tags live exclusively in the corresponding `ghcr.io/abruncloud/<image>-ci` repository; Docker Hub receives only documented version/distribution runtime or backup tags. Native candidates are tested and scanned by immutable GHCR digest. After all variants qualify, pinned crane copies native and combined indexes, including their layers and embedded SBOM/provenance manifests, into Docker Hub by digest without creating staging tags. Each copied digest is verified and signed in Docker Hub before any public version alias moves. Release records retain both candidate and final references. CI uses the built-in GitHub token with package-write permission for GHCR; Docker Hub credentials are restricted to promotion.
 
 ClickHouse 26.8 LTS client-only backup tools use the official native Go driver;
 see [ClickHouse](images/clickhouse/README.md) for strict TLS, archive and tag contracts.
+
+MongoDB tools and exporter images record explicit security source rebuilds in their per-image `security-source.lock.json` and complete patched Go module locks. Vendor feature versions remain visible, while compiler/dependency fixes produce new signed digests; native recovery and metrics qualification and the existing actionable security policy still gate publication.
