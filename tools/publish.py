@@ -26,7 +26,11 @@ def copy_verified(source, destination):
         raise ValueError("Cross-registry digest changed during copy")
 
 
-def main(target_filter="all"):
+def main(target_filter="all", image="postgres"):
+    if image not in {"postgres", "mysql"}:
+        raise ValueError("Unsupported image product")
+    repository = "abruncloud/" + image
+    candidate_repository = "ghcr.io/abruncloud/" + image + "-ci"
     if target_filter not in {"all", "runtime", "backup"}:
         raise ValueError("Unsupported publication target")
     sha = os.environ["EXPECTED_SHA"]
@@ -39,7 +43,7 @@ def main(target_filter="all"):
     if not run_id.isdigit() or not attempt.isdigit():
         raise ValueError("Invalid workflow run identity")
     build_id = sha + "-" + run_id + "-" + attempt
-    metadata, lock = load()
+    metadata, lock = load() if image == "postgres" else load(image)
     outputs = []
     # Assemble and sign every candidate before moving any public version alias.
     for release in lock["releases"]:
@@ -53,24 +57,24 @@ def main(target_filter="all"):
                 digest = path.read_text().strip()
                 if not re.fullmatch(r"sha256:[a-f0-9]{64}", digest):
                     raise ValueError("Invalid qualified digest: " + str(path))
-                candidate_refs.append(CANDIDATE_REPOSITORY + "@" + digest)
-                refs.append(REPOSITORY + "@" + digest)
+                candidate_refs.append(candidate_repository + "@" + digest)
+                refs.append(repository + "@" + digest)
                 copy_verified(candidate_refs[-1], refs[-1])
                 command("cosign", "sign", "--yes", refs[-1])
-            candidate = CANDIDATE_REPOSITORY + ":build-" + build_id + "-" + release["major"] + "-" + release["variant"] + ("-backup" if target == "backup" else "")
+            candidate = candidate_repository + ":build-" + build_id + "-" + release["major"] + "-" + release["variant"] + ("-backup" if target == "backup" else "")
             command("docker", "buildx", "imagetools", "create", "--tag", candidate, *candidate_refs)
             # Obtain the authoritative index digest from registry metadata.
             info = json.loads(command("docker", "buildx", "imagetools", "inspect", candidate, "--format", "{{json .Manifest}}"))
             digest = info["digest"]
             if not re.fullmatch(r"sha256:[a-f0-9]{64}", digest):
                 raise ValueError("Invalid multi-platform digest")
-            candidate_reference = CANDIDATE_REPOSITORY + "@" + digest
-            reference = REPOSITORY + "@" + digest
+            candidate_reference = candidate_repository + "@" + digest
+            reference = repository + "@" + digest
             copy_verified(candidate_reference, reference)
             command("cosign", "sign", "--yes", reference)
             outputs.append({"major": release["major"], "variant": release["variant"], "target": target,
                             "digest": digest, "native_refs": refs, "candidate_native_refs": candidate_refs,
-                            "candidate_ref": candidate_reference, "candidate_archive_tag": candidate, "tags": tags(release["major"], release["variant"], target)})
+                            "candidate_ref": candidate_reference, "candidate_archive_tag": candidate, "tags": (tags(release["major"], release["variant"], target) if image == "postgres" else tags(release["major"], release["variant"], target, image))})
     if not outputs:
         raise ValueError("No qualified artifacts for selected publication target")
     if current_main() != sha:
@@ -78,12 +82,14 @@ def main(target_filter="all"):
     for output in outputs:
         for tag in output["tags"]:
             command("docker", "buildx", "imagetools", "create", "--prefer-index=false", "--tag", tag,
-                    REPOSITORY + "@" + output["digest"])
-    Path("release.json").write_text(json.dumps({"schema_version": 1, "publication_target": target_filter, "source_commit": sha, "build_id": build_id,
+                    repository + "@" + output["digest"])
+    Path("release.json").write_text(json.dumps({"schema_version": 1, "image": image, "publication_target": target_filter, "source_commit": sha, "build_id": build_id,
                                                "workflow_run_id": run_id, "workflow_run_attempt": attempt,
-                                               "inputs": lock, "candidate_repository": CANDIDATE_REPOSITORY, "images": outputs}, indent=2) + "\n")
+                                               "inputs": lock, "candidate_repository": candidate_repository, "images": outputs}, indent=2) + "\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image", choices=["postgres", "mysql"], default="postgres")
     parser.add_argument("--target", choices=["all", "runtime", "backup"], default="all")
-    main(parser.parse_args().target)
+    args = parser.parse_args()
+    main(args.target, args.image)

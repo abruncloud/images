@@ -1,0 +1,131 @@
+name: Discover upstream updates
+on:
+  schedule:
+    - cron: '29 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mysql-discovery
+  cancel-in-progress: false
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@06da6279cdbca41027908073e81a4544dc79c06b
+        with:
+          python-version: '3.13'
+      - name: Verify automatic merge branch protection
+        if: vars.AUTO_UPDATE_PRS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          checks=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq 'if .protected == true then .protection.required_status_checks.contexts[] else empty end')
+          if ! printf '%s\n' "$checks" | grep -Fxq required; then
+            echo 'Automatic merge requires main branch protection with the required CI check.' >&2
+            exit 1
+          fi
+      - name: Resolve upstream inputs and generate recipes
+        id: discovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous=$(python3 tools/mysql_discover.py --review-inputs)
+          python3 tools/mysql_discover.py
+          python3 tools/mysql_generate.py
+          current=$(python3 tools/mysql_discover.py --review-inputs)
+          if [ "$previous" = "$current" ]; then echo "routine=true" >> "$GITHUB_OUTPUT"; else echo "routine=false" >> "$GITHUB_OUTPUT"; fi
+          if git diff --quiet; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Retain proposed update inputs
+        if: steps.discovery.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: proposed-mysql-update-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            images/mysql/versions.lock.json
+            images/mysql/generated
+          retention-days: 90
+      - name: Describe proposed update
+        if: steps.discovery.outputs.changed == 'true'
+        env:
+          PR_AUTOMATION: ${{ vars.AUTO_UPDATE_PRS }}
+        run: |
+          echo 'Upstream MySQL image inputs changed. The proposed lock and generated recipes are attached as a workflow artifact.' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PR_AUTOMATION" != true ]; then
+            echo 'Update PR creation is gated. Enable AUTO_UPDATE_PRS=true only after repository and organization permissions permit Actions-created PRs and main requires the required CI check.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Open reproducible update PR
+        if: steps.discovery.outputs.changed == 'true' && vars.AUTO_UPDATE_PRS == 'true'
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          branch=automation/mysql-updates
+          git config user.name 'abruncloud-images-bot'
+          git config user.email 'images-bot@users.noreply.github.com'
+          git switch -c "$branch"
+          git add images/mysql/versions.lock.json images/mysql/generated
+          git commit -m 'Update qualified MySQL build inputs'
+          gh auth setup-git
+          lease=$(git ls-remote origin "refs/heads/$branch" | cut -f1)
+          git push "--force-with-lease=refs/heads/$branch:$lease" origin "HEAD:$branch"
+          count=$(gh pr list --head "$branch" --state open --json number --jq 'length')
+          if [ "$count" = 0 ]; then
+            gh pr create --head "$branch" --title 'Update MySQL image inputs' --body 'Automated upstream discovery. Review MySQL patch releases and reviewed Oracle Linux base digest changes; native builds and recovery tests must pass before merge.'
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Dispatch and await native qualification
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.update.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          branch=automation/mysql-updates
+          # GITHUB_TOKEN-created PRs do not trigger pull_request workflows.
+          # Explicit workflow_dispatch is permitted and runs checks on this head.
+          gh workflow run check.yml --ref "$branch"
+          run_id=
+          for attempt in $(seq 1 30); do
+            run_id=$(gh run list --workflow check.yml --branch "$branch" --event workflow_dispatch --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$HEAD_SHA\") | .databaseId" | head -n 1)
+            if [ -n "$run_id" ]; then break; fi
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then
+            echo 'Timed out finding the dispatched qualification run for this exact commit.' >&2
+            exit 1
+          fi
+          gh run watch "$run_id" --exit-status --interval 15
+      - name: Merge qualified routine updates and dispatch publication
+        if: steps.update.outputs.changed == 'true' && steps.discovery.outputs.routine == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.update.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          branch=automation/mysql-updates
+          checks=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq 'if .protected == true then .protection.required_status_checks.contexts[] else empty end')
+          if ! printf '%s\n' "$checks" | grep -Fxq required; then
+            echo 'Automatic merge requires main branch protection with the required CI check.' >&2
+            exit 1
+          fi
+          # No administrator bypass: normal branch protection still applies.
+          # Match the tested head to prevent merging a changed PR.
+          gh pr merge "$branch" --squash --match-head-commit "$HEAD_SHA"
+          # GITHUB_TOKEN merges do not trigger push workflows either.
+          gh workflow run mysql-release.yml --ref main
