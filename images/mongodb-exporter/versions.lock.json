@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "releases": [
+    {
+      "major": "0.53",
+      "release_line": "0.53",
+      "mongodb-exporter_version": "0.53.0",
+      "variant": "busybox",
+      "base_image": "docker.io/percona/mongodb_exporter:0.53.0@sha256:0214e482b2cd4b1849f9f4dcef90d328a99ba3727dd1103e7da48b42060bcec1",
+      "runtime_base_image": "docker.io/library/busybox:1.37.0-uclibc@sha256:31b72538c3019a20336b04c4cebcd47c36511d0b45aa76666804c2845055bbd3",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "mongodb-exporter",
+  "category": "observability",
+  "repository": "abruncloud/mongodb-exporter",
+  "supported_majors": [
+    "0.53"
+  ],
+  "variants": [
+    "busybox"
+  ],
+  "default_variant": "busybox",
+  "backup_variant": null,
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "targets": [
+    "runtime"
+  ],
+  "upstream": "https://github.com/percona/mongodb_exporter"
+}

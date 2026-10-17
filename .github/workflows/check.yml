@@ -17,6 +17,8 @@ jobs:
       mysql-matrix: ${{ steps.mysql-matrix.outputs.value }}
       clickhouse-matrix: ${{ steps.clickhouse-matrix.outputs.value }}
       redis-matrix: ${{ steps.redis-matrix.outputs.value }}
+      mongodb-matrix: ${{ steps.mongodb-matrix.outputs.value }}
+      mongodb-exporter-matrix: ${{ steps.mongodb-exporter-matrix.outputs.value }}
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
@@ -28,11 +30,13 @@ jobs:
       - run: python3 tools/mysql_generate.py --check
       - run: python3 tools/redis_generate.py --check
       - run: python3 tools/clickhouse_generate.py --check
+      - run: python3 tools/mongodb_generate.py --check
+      - run: python3 tools/mongodb_exporter_generate.py --check
       - name: Check tools and tests
         run: |
           python3 -m compileall -q tools
           python3 -m unittest discover -s tests -p 'test_*.py'
-          find tests images/postgres images/mysql images/redis images/clickhouse -name '*.sh' -exec bash -n {} ';'
+          find tests images/postgres images/mysql images/redis images/clickhouse images/mongodb -name '*.sh' -exec bash -n {} ';'
       - id: matrix
         run: echo "value=$(python3 tools/release.py matrix)" >> "$GITHUB_OUTPUT"
       - id: mysql-matrix
@@ -41,6 +45,10 @@ jobs:
         run: echo "value=$(python3 tools/release.py --image clickhouse matrix --target backup)" >> "$GITHUB_OUTPUT"
       - id: redis-matrix
         run: echo "value=$(python3 tools/release.py --image redis matrix --target backup)" >> "$GITHUB_OUTPUT"
+      - id: mongodb-matrix
+        run: echo "value=$(python3 tools/release.py --image mongodb matrix --target backup)" >> "$GITHUB_OUTPUT"
+      - id: mongodb-exporter-matrix
+        run: echo "value=$(python3 tools/release.py --image mongodb-exporter matrix --target runtime)" >> "$GITHUB_OUTPUT"
   native-test:
     needs: metadata
     strategy:
@@ -138,9 +146,188 @@ jobs:
       - name: Native backup and recovery qualification
         if: matrix.backup
         run: bash tests/run-clickhouse-backup.sh abrun-clickhouse-test:backup "${{ matrix.base_image }}"
+  mongodb-native-test:
+    needs: metadata
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.mongodb-matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Authenticate trusted candidate registry
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: candidate
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        if: matrix.backup
+        with:
+          context: .
+          file: ${{ matrix.directory }}/Dockerfile.backup
+          platforms: linux/${{ matrix.arch }}
+          load: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          sbom: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          provenance: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'mode=max' || 'false' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/abruncloud/images
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: ghcr.io/abruncloud/mongodb-ci:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-backup
+      - name: Scan backup
+        if: always() && steps.candidate.outputs.digest != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: ghcr.io/abruncloud/mongodb-ci@${{ steps.candidate.outputs.digest }}
+          format: json
+          output: scan-backup.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          scanners: vuln
+          exit-code: '0'
+          ignore-unfixed: false
+      - name: Verify scanned native architecture
+        if: always() && steps.candidate.outputs.digest != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          report = json.load(open("scan-backup.json"))
+          observed = report.get("Metadata", {}).get("ImageConfig", {}).get("architecture")
+          if observed != os.environ["EXPECTED_ARCH"]:
+              raise SystemExit("Scanner architecture mismatch: " + str(observed))
+          PYTHON
+      - name: Retain complete vulnerability reports
+        if: always() && steps.candidate.outputs.digest != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: security-mongodb-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          path: scan-*.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Enforce security policy for every expected artifact
+        if: always() && steps.candidate.outputs.digest != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          BACKUP_ENABLED: ${{ matrix.backup }}
+        run: |
+          python3 tools/security_gate.py --policy images/mongodb/security-policy.json scan-backup.json
+      - name: Load exact native candidate
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: docker pull ghcr.io/abruncloud/mongodb-ci@${{ steps.candidate.outputs.digest }}
+      - name: Native backup and recovery qualification
+        env:
+          CANDIDATE_DIGEST: ${{ steps.candidate.outputs.digest }}
+          TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          BUILD_TAG: ghcr.io/abruncloud/mongodb-ci:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-backup
+          UPSTREAM: ${{ matrix.base_image }}
+        run: |
+          candidate="$BUILD_TAG"
+          if [ "$TRUSTED" = true ]; then candidate="ghcr.io/abruncloud/mongodb-ci@$CANDIDATE_DIGEST"; fi
+          bash tests/run-mongodb-backup.sh "$candidate" "$UPSTREAM"
+
+  mongodb-exporter-native-test:
+    needs: metadata
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.mongodb-exporter-matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Authenticate trusted candidate registry
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: docker/login-action@783ae9cac559640a24c9212dfa6cd9e998252f9a
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: candidate
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          file: ${{ matrix.directory }}/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          load: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          sbom: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          provenance: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'mode=max' || 'false' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/abruncloud/images
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: ghcr.io/abruncloud/mongodb-exporter-ci:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-runtime
+      - name: Scan exporter
+        if: always() && steps.candidate.outputs.digest != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: ghcr.io/abruncloud/mongodb-exporter-ci@${{ steps.candidate.outputs.digest }}
+          format: json
+          output: scan-runtime.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          scanners: vuln
+          exit-code: '0'
+          ignore-unfixed: false
+      - name: Verify scanned native architecture
+        if: always() && steps.candidate.outputs.digest != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          report = json.load(open("scan-runtime.json"))
+          observed = report.get("Metadata", {}).get("ImageConfig", {}).get("architecture")
+          if observed != os.environ["EXPECTED_ARCH"]:
+              raise SystemExit("Scanner architecture mismatch: " + str(observed))
+          PYTHON
+      - name: Retain complete vulnerability reports
+        if: always() && steps.candidate.outputs.digest != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: security-mongodb-exporter-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          path: scan-*.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Enforce security policy for every expected artifact
+        if: always() && steps.candidate.outputs.digest != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          RUNTIME_ENABLED: ${{ true }}
+        run: |
+          python3 tools/security_gate.py --policy images/mongodb-exporter/security-policy.json scan-runtime.json
+      - name: Load exact native candidate
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: docker pull ghcr.io/abruncloud/mongodb-exporter-ci@${{ steps.candidate.outputs.digest }}
+      - name: Native exporter runtime qualification
+        env:
+          CANDIDATE_DIGEST: ${{ steps.candidate.outputs.digest }}
+          TRUSTED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          BUILD_TAG: ghcr.io/abruncloud/mongodb-exporter-ci:build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}-runtime
+          UPSTREAM: ${{ matrix.base_image }}
+        run: |
+          candidate="$BUILD_TAG"
+          if [ "$TRUSTED" = true ]; then candidate="ghcr.io/abruncloud/mongodb-exporter-ci@$CANDIDATE_DIGEST"; fi
+          bash tests/run-mongodb-exporter.sh "$candidate" "$UPSTREAM"
+
   required:
     if: always()
-    needs: [metadata, native-test, mysql-native-test, redis-native-test, clickhouse-native-test]
+    needs: [metadata, native-test, mysql-native-test, redis-native-test, clickhouse-native-test, mongodb-native-test, mongodb-exporter-native-test]
     runs-on: ubuntu-24.04
     steps:
       - env:
@@ -148,5 +335,7 @@ jobs:
           TESTS: ${{ needs.native-test.result }}
           MYSQL_TESTS: ${{ needs.mysql-native-test.result }}
           CLICKHOUSE_TESTS: ${{ needs.clickhouse-native-test.result }}
+          MONGODB_EXPORTER_TESTS: ${{ needs.mongodb-exporter-native-test.result }}
+          MONGODB_TESTS: ${{ needs.mongodb-native-test.result }}
           REDIS_TESTS: ${{ needs.redis-native-test.result }}
-        run: test "$METADATA" = success && test "$TESTS" = success && test "$MYSQL_TESTS" = success && test "$REDIS_TESTS" = success && test "$CLICKHOUSE_TESTS" = success
+        run: test "$METADATA" = success && test "$TESTS" = success && test "$MYSQL_TESTS" = success && test "$REDIS_TESTS" = success && test "$CLICKHOUSE_TESTS" = success && test "$MONGODB_TESTS" = success && test "$MONGODB_EXPORTER_TESTS" = success

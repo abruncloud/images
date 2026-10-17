@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "mongodb",
+  "category": "database",
+  "repository": "abruncloud/mongodb",
+  "supported_majors": ["8.0"],
+  "variants": ["noble"],
+  "default_variant": "noble",
+  "backup_variant": "noble",
+  "platforms": ["linux/amd64", "linux/arm64"],
+  "targets": ["backup"],
+  "upstream": "https://github.com/mongodb/mongo-tools"
+}

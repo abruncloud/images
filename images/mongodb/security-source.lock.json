@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "upstream_version": "100.19.1",
+  "upstream_commit": "9348e032419d906e40966f477278cce647b9b1eb",
+  "source_url": "https://github.com/mongodb/mongo-tools/archive/9348e032419d906e40966f477278cce647b9b1eb.tar.gz",
+  "source_sha256": "554c7f171a7b7d3ce42faf2c07112868173f9c008393ef4e7f0b861057c60980",
+  "go": {
+    "version": "1.27.2",
+    "base_image": "docker.io/library/golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61"
+  },
+  "module_overrides": {
+    "golang.org/x/net": "v0.60.0"
+  },
+  "build_tags": [
+    "gssapi",
+    "failpoints"
+  ],
+  "cgo_enabled": true,
+  "buildmode": "pie",
+  "addressed_cves": [
+    "CVE-2026-78667",
+    "CVE-2026-78669",
+    "CVE-2026-97031"
+  ],
+  "basis": {
+    "workflow_run": 39043285071,
+    "policy": "actionable",
+    "exceptions": []
+  }
+}
