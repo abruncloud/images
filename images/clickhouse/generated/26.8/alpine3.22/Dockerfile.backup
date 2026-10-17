@@ -30,6 +30,6 @@ RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh \
  && test -x /sbin/tini && test -x /bin/setpriv \
  && test ! -e /usr/bin/clickhouse && test ! -e /usr/bin/clickhouse-server
 USER 10001:10001
-WORKDIR /backup
+WORKDIR /
 ENTRYPOINT ["/sbin/tini", "-g", "--", "docker-entrypoint.sh"]
 CMD ["clickhouse-sql", "--help"]

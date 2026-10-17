@@ -59,6 +59,7 @@ try:
  version=command('docker','run','--rm',backup,'clickhouse-sql','--version').stdout.strip()
  if 'official clickhouse-go/v2 2.49.0' not in version:raise RuntimeError('unexpected driver version')
  if command('docker','run','--rm',backup,'id','-u').stdout.strip()!='10001':raise RuntimeError('client is not nonroot')
+ if command('docker','run','--rm','--user','101:101',backup,'id','-u').stdout.strip()!='101':raise RuntimeError('explicit nonroot UID cannot start')
  command('docker','run','--rm',backup,'sh','-ec','! command -v clickhouse; ! command -v clickhouse-server; ! command -v gcc; test -x /bin/setpriv; test -x /sbin/tini')
  for config in ['wrong-host.xml','wrong-ca.xml']:
   if client('SELECT 1',config=config,check=False).returncode==0:raise RuntimeError('TLS identity/CA bypass accepted')

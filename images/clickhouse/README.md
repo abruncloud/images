@@ -70,7 +70,8 @@ archive restoration need separate qualification.
 
 The image supplies curl, jq, Python 3, tar, gzip, zip/unzip, coreutils, setsid,
 setpriv, CA roots and tini. Default UID/GID is 10001 with `/backup` mode0700.
-Mount permissions must allow that UID. The entrypoint sets umask077 and runs under
+The working directory is `/`, so an explicitly selected alternate UID can start
+without entering the private default backup directory. Mount permissions must allow that UID. The entrypoint sets umask077 and runs under
 tini process-group forwarding; flags are passed to `clickhouse-sql`. No credentials
 or ports are embedded, and the image can run with all capabilities dropped and
 no-new-privileges. A platform may explicitly prepare its own staging directory
