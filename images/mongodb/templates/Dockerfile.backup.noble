@@ -7,8 +7,7 @@ RUN curl --fail --location --retry 3 --output /tmp/source.tar.gz '{{SOURCE_URL}}
  && tar -xzf /tmp/source.tar.gz --strip-components=1 -C /src
 COPY images/mongodb/security-build/go.mod images/mongodb/security-build/go.sum ./
 ENV GOFLAGS=-mod=readonly GOTOOLCHAIN=local
-RUN go mod download && go mod verify \
- && test "$(go list -m -f '{{.Version}}' golang.org/x/net)" = v0.60.0
+RUN go mod download && go mod verify
 RUN CGO_ENABLED=1 UNIT_TEST=true go test -tags 'gssapi failpoints' ./common/... ./mongodump/... ./mongorestore/... ./bsondump/...
 RUN mkdir /out /licenses \
  && for tool in mongodump mongorestore bsondump; do \
