@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "releases": [
+    {
+      "major": "8.2",
+      "release_line": "8.2",
+      "redis_version": "8.2.10",
+      "variant": "alpine3.22",
+      "base_image": "docker.io/library/redis:8.2.10-bookworm@sha256:47670742d7924adbcdb404d1288b6327815b23141969c0939b8e5d61f78c2634",
+      "backup_base_image": "docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8",
+      "source_url": "https://github.com/redis/redis/archive/refs/tags/8.2.10.tar.gz",
+      "source_sha256": "d6de0ec3bce8eeba13ecbd7478dd56fb87a4bbe8ec832dd876892a86ac1a55ec",
+      "official_source_commit": "78ec6fbd0dcf6ea97b4828244ae5f7ec4d04d01a",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ]
+    }
+  ]
+}
