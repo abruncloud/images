@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 def load(image="postgres"):
-    if image not in {"postgres", "mysql", "redis", "clickhouse"}:
+    if image not in {"postgres", "mysql", "redis", "clickhouse", "mongodb", "mongodb-exporter"}:
         raise ValueError("Unsupported image product")
     metadata = json.loads((ROOT / ("images/" + image + "/image.json")).read_text())
     lock = json.loads((ROOT / ("images/" + image + "/versions.lock.json")).read_text())
@@ -47,7 +47,7 @@ def tags(major, variant, target, image="postgres"):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--image", choices=["postgres", "mysql", "redis", "clickhouse"], default="postgres")
+    parser.add_argument("--image", choices=["postgres", "mysql", "redis", "clickhouse", "mongodb", "mongodb-exporter"], default="postgres")
     sub = parser.add_subparsers(dest="command", required=True)
     matrix_parser = sub.add_parser("matrix")
     matrix_parser.add_argument("--target", choices=["all", "runtime", "backup"], default="all")
