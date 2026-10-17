@@ -16,7 +16,8 @@ record. Publishing a newer alias never updates existing instances.
 ## Contents and behavior
 
 The image includes TLS-enabled `redis-cli`, `redis-check-rdb`, curl, jq, Python 3,
-tar, gzip, coreutils (including sha256sum and timeout), and setsid. The default
+tar, gzip, coreutils (including sha256sum and timeout), setsid and `/bin/setpriv` for callers that explicitly run a protected bootstrap
+before dropping privileges and capabilities. The default
 user is UID/GID 10001; `/backup` is writable by that user. Bind mounts need matching
 permissions. The entrypoint sets a private umask, forwards arguments verbatim,
 and executes commands under tini with process-group signal forwarding. This avoids
