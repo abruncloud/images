@@ -90,7 +90,7 @@ try:
     check = docker("run", "--rm", "-v", str(root / "work") + ":/backup:ro", backup, "redis-check-rdb", "/backup/dump.rdb")
     assert "RDB looks OK" in check.stdout
     bad = root / "work/bad.rdb"
-    bad.write_bytes(rdb.read_bytes()[:-10])
+    docker("run", "--rm", "-v", str(root / "work") + ":/backup", backup, "python3", "-c", 'from pathlib import Path; Path("/backup/bad.rdb").write_bytes(Path("/backup/dump.rdb").read_bytes()[:-10])')
     assert docker("run", "--rm", "-v", str(root / "work") + ":/backup:ro", backup, "redis-check-rdb", "/backup/bad.rdb", check=False).returncode != 0
     # Renaming the checker must never turn its shared upstream code into a server.
     assert docker("run", "--rm", "--entrypoint", "sh", backup, "-c", "cp /usr/local/bin/redis-check-rdb /tmp/renamed; /tmp/renamed --port 6379", check=False).returncode != 0
