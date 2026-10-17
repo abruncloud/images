@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "gosu": {
+    "version": "1.19",
+    "url": "https://github.com/tianon/gosu/archive/refs/tags/1.19.tar.gz",
+    "sha256": "cd9719b775dbfedae53923c9b0dc792b66d42c51e0b36652ed6f747fbadc0164"
+  },
+  "go": {
+    "version": "1.27.2",
+    "base_image": "docker.io/library/golang:1.27.2-trixie@sha256:e58d6f83b3416618d8bcac2b3dde1b7f7e3c4a77d25e88637f8bbae81536c48d"
+  },
+  "releases": [
+    {
+      "major": "8.4",
+      "release_line": "8.4",
+      "mysql_version": "8.4.11",
+      "variant": "oraclelinux9",
+      "base_image": "docker.io/library/mysql:8.4.11-oraclelinux9@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70",
+      "mysql_client_rpm_version": "8.4.11-1.el9",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "backup_base_image": "docker.io/library/oraclelinux:9-slim@sha256:fdf4581abc841d49f63cf456ea92f8152a80b5bdc62d5409a4e77827b824265c"
+    }
+  ]
+}

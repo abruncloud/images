@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "mysql",
+  "category": "database",
+  "repository": "abruncloud/mysql",
+  "supported_majors": [
+    "8.4"
+  ],
+  "variants": [
+    "oraclelinux9"
+  ],
+  "default_variant": "oraclelinux9",
+  "backup_variant": "oraclelinux9",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "targets": [
+    "backup"
+  ],
+  "upstream": "https://github.com/docker-library/mysql"
+}

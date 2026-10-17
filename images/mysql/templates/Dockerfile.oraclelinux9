@@ -1,0 +1,6 @@
+# Generated from immutable inputs. Preserve the official MySQL startup contract.
+{{GOSU_BUILD}}
+FROM {{BASE_IMAGE}} AS runtime
+COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
+COPY --from=gosu-build /out/LICENSE /usr/local/share/licenses/gosu/LICENSE
+RUN gosu --version && gosu nobody true && mysqld --version

@@ -1,0 +1,18 @@
+# Rebuild the same gosu source with a patched compiler; only artifacts enter runtime.
+FROM --platform=$BUILDPLATFORM {{GO_BASE_IMAGE}} AS gosu-build
+ARG TARGETARCH
+ENV GOTOOLCHAIN=local CGO_ENABLED=0
+RUN set -eux; \
+    test "$(go env GOVERSION)" = 'go{{GO_VERSION}}'; \
+    curl --fail --show-error --location --proto '=https' --tlsv1.2 \
+        '{{GOSU_URL}}' --output /tmp/gosu.tar.gz; \
+    echo '{{GOSU_SHA256}}  /tmp/gosu.tar.gz' | sha256sum --check -; \
+    mkdir /src /out; \
+    tar -xzf /tmp/gosu.tar.gz -C /src --strip-components=1; \
+    cd /src; \
+    go mod download; \
+    go mod verify; \
+    go test -mod=readonly ./...; \
+    GOOS=linux GOARCH="$TARGETARCH" go build -mod=readonly -trimpath -buildvcs=false -ldflags='-w' -o /out/gosu .; \
+    go version -m /out/gosu; \
+    cp LICENSE /out/LICENSE
