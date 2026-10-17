@@ -80,7 +80,7 @@ try:
     server_version = re.search(r"^redis_version:([0-9]+\.[0-9]+\.[0-9]+)\r?$", server_info, re.MULTILINE).group(1)
     tools_output = docker("run", "--rm", "--entrypoint", "sh", backup, "-c", "redis-cli --version; redis-check-rdb --version").stdout
     client_version = re.search(r"^redis-cli ([0-9]+\.[0-9]+\.[0-9]+)", tools_output, re.MULTILINE).group(1)
-    checker_version = re.search(r"^redis-check-rdb ([0-9]+\.[0-9]+\.[0-9]+)", tools_output, re.MULTILINE).group(1)
+    checker_version = re.search(r"^redis-check-rdb v=([0-9]+\.[0-9]+\.[0-9]+)", tools_output, re.MULTILINE).group(1)
     assert client_version == checker_version == server_version, "Backup tools must match the qualified server patch"
     assert "PONG" not in cli("operator", "PING", tls=False, check=False).stdout
     assert "NOPERM" in cli("backup", "SET", "forbidden", "x").stdout
