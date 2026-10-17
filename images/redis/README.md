@@ -120,3 +120,8 @@ an owned, whitespace-only lockfile PR and verify GitHub's event/approval/check
 path without changing any image input. The qualification PR never auto-merges;
 close it after inspecting the actual PR check result. Daily package refresh and
 native/security-gated publication remain fully automatic.
+
+Daily builds explicitly upgrade all installed Alpine packages before adding tools,
+including libraries inherited from the pinned base image. Merely adding client
+packages does not refresh every existing dependency. Exact installed versions
+remain recorded in the build SBOM; existing deployment digests stay pinned.
