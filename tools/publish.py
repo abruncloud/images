@@ -27,7 +27,7 @@ def copy_verified(source, destination):
 
 
 def main(target_filter="all", image="postgres"):
-    if image not in {"postgres", "mysql"}:
+    if image not in {"postgres", "mysql", "redis"}:
         raise ValueError("Unsupported image product")
     repository = "abruncloud/" + image
     candidate_repository = "ghcr.io/abruncloud/" + image + "-ci"
@@ -89,7 +89,7 @@ def main(target_filter="all", image="postgres"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--image", choices=["postgres", "mysql"], default="postgres")
+    parser.add_argument("--image", choices=["postgres", "mysql", "redis"], default="postgres")
     parser.add_argument("--target", choices=["all", "runtime", "backup"], default="all")
     args = parser.parse_args()
     main(args.target, args.image)
