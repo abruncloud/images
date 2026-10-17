@@ -77,7 +77,7 @@ try:
  if query('SELECT count(),sum(id),anyIf(payload,id=2) FROM default.fixture FORMAT TSVRaw')!='3\t6\tβeta':raise RuntimeError('native restore changed data')
  # Native context cancellation must stop an owned running query, not merely its CLI.
  cancel_id=str(uuid.uuid4());name=identity+'-cancel'
- args=['docker','run','--rm','--name',name,'--network',network,'--mount','type=bind,src='+str(root)+',dst=/tls,readonly',backup,'clickhouse-sql','--config-file=/tls/connection.xml','--query_id='+cancel_id,'--query','SELECT sleepEachRow(1) FROM numbers(30)']
+ args=['docker','run','--rm','--name',name,'--network',network,'--mount','type=bind,src='+str(root)+',dst=/tls,readonly',backup,'clickhouse-sql','--config-file=/tls/connection.xml','--query_id='+cancel_id,'--query','SELECT sleepEachRow(0.1) FROM numbers(1000000) SETTINGS max_block_size=10']
  owned.append(name);process=subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
  for _ in range(20):
   if query("SELECT count() FROM system.processes WHERE query_id='"+cancel_id+"' FORMAT TSVRaw")=='1':break
