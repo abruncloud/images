@@ -11,7 +11,7 @@ archive=private_root/'archives';archive.mkdir();archive.chmod(0o777)
 password=secrets.token_urlsafe(24)
 def command(*args,timeout=90,check=True):
  result=subprocess.run(list(args),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=timeout)
- if check and result.returncode:raise RuntimeError('command failed: '+args[0]+' '+args[1]+'; '+result.stderr[-1500:].replace(password,'[redacted]'))
+ if check and result.returncode:raise RuntimeError('command failed: '+args[0]+' '+args[1]+'; '+(result.stdout+result.stderr)[-1500:].replace(password,'[redacted]'))
  return result
 
 def xml_config(host='ch-fixture',ca='/tls/ca.pem'):
@@ -80,9 +80,9 @@ try:
  operation=str(uuid.uuid4())
  result=query("BACKUP DATABASE default TO Disk('backups','fixture.zip') SETTINGS id='"+operation+"'",extra=['--query_id='+operation,'--timeout=60s'],timeout=75)
  if 'BACKUP_CREATED' not in result:raise RuntimeError('native backup did not complete')
- command('docker','run','--rm','--mount','type=bind,src='+str(archive)+',dst=/backup,readonly',backup,'unzip','-t','/backup/fixture.zip')
- data=(archive/'fixture.zip').read_bytes();(archive/'truncated.zip').write_bytes(data[:-64])
- if command('docker','run','--rm','--mount','type=bind,src='+str(archive)+',dst=/backup,readonly',backup,'unzip','-t','/backup/truncated.zip',check=False).returncode==0:raise RuntimeError('truncated archive accepted')
+ command('docker','run','--rm','--user','101:101','--mount','type=bind,src='+str(archive)+',dst=/backup,readonly',backup,'unzip','-t','/backup/fixture.zip')
+ command('docker','run','--rm','--user','101:101','--mount','type=bind,src='+str(archive)+',dst=/backup',backup,'python3','-c',"from pathlib import Path; p=Path('/backup/fixture.zip'); Path('/backup/truncated.zip').write_bytes(p.read_bytes()[:-64])")
+ if command('docker','run','--rm','--user','101:101','--mount','type=bind,src='+str(archive)+',dst=/backup,readonly',backup,'unzip','-t','/backup/truncated.zip',check=False).returncode==0:raise RuntimeError('truncated archive accepted')
  command('docker','rm','-f','-v',server_name)
  start_server();wait_ready()
  query("RESTORE DATABASE default FROM Disk('backups','fixture.zip')",extra=['--timeout=60s'],timeout=75)
