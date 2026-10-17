@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import shutil
@@ -75,6 +76,12 @@ try:
         if cli("operator", "PING", check=False).stdout.strip() == "PONG": break
         time.sleep(1)
     else: raise AssertionError("TLS server did not become ready")
+    server_info = cli("operator", "INFO", "server").stdout
+    server_version = re.search(r"^redis_version:([0-9]+\.[0-9]+\.[0-9]+)\r?$", server_info, re.MULTILINE).group(1)
+    tools_output = docker("run", "--rm", "--entrypoint", "sh", backup, "-c", "redis-cli --version; redis-check-rdb --version").stdout
+    client_version = re.search(r"^redis-cli ([0-9]+\.[0-9]+\.[0-9]+)", tools_output, re.MULTILINE).group(1)
+    checker_version = re.search(r"^redis-check-rdb ([0-9]+\.[0-9]+\.[0-9]+)", tools_output, re.MULTILINE).group(1)
+    assert client_version == checker_version == server_version, "Backup tools must match the qualified server patch"
     assert "PONG" not in cli("operator", "PING", tls=False, check=False).stdout
     assert "NOPERM" in cli("backup", "SET", "forbidden", "x").stdout
     assert "NOPERM" in cli("customer", "CONFIG", "GET", "*").stdout
@@ -126,7 +133,7 @@ try:
         assert docker("run", "--rm", "-v", str(root / "work") + ":/backup:ro", backup, "timeout", "--signal=KILL", "5s", "redis-check-rdb", "/backup/partial.rdb", check=False, timeout=15).returncode in {1, 124, 137}
     # The generic client does not delete arbitrary partial paths; callers publish only after a successful check.
     assert not docker("run", "--rm", "--entrypoint", "sh", backup, "-c", "command -v redis-server || command -v redis-sentinel", check=False).stdout.strip()
-    print(json.dumps({"version": "8.2.10", "backup": backup, "runtime": runtime, "architecture": docker("image", "inspect", backup, "--format", "{{.Architecture}}").stdout.strip(), "tls_acl": "pass", "module_rdb_restore": ["json", "search", "timeseries", "bloom", "vectorset"], "checker_corruption_and_rename": "pass", "corruption_rejection": corruption_rejected, "cancellation_partial": "pass", "published_ports": []}, sort_keys=True))
+    print(json.dumps({"version": server_version, "client_version": client_version, "checker_version": checker_version, "backup": backup, "runtime": runtime, "architecture": docker("image", "inspect", backup, "--format", "{{.Architecture}}").stdout.strip(), "tls_acl": "pass", "module_rdb_restore": ["json", "search", "timeseries", "bloom", "vectorset"], "checker_corruption_and_rename": "pass", "corruption_rejection": corruption_rejected, "cancellation_partial": "pass", "published_ports": []}, sort_keys=True))
 finally:
     for name in reversed(containers): docker("rm", "-f", "-v", name, check=False)
     for name in volumes: docker("volume", "rm", name, check=False)

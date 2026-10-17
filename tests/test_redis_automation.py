@@ -14,7 +14,9 @@ class RedisAutomationTests(unittest.TestCase):
         self.assertTrue(all(entry["backup"] for entry in entries))
         self.assertEqual(release.matrix("runtime", "redis")["include"], [])
     def test_only_real_backup_tags(self):
-        self.assertEqual(set(release.tags("8.2", "alpine3.22", "backup", "redis")), {"abruncloud/redis:8.2.10-alpine3.22-backup", "abruncloud/redis:8.2-alpine3.22-backup", "abruncloud/redis:8.2.10-backup", "abruncloud/redis:8.2-backup"})
+        record = json.loads((ROOT / "images/redis/versions.lock.json").read_text())["releases"][0]
+        version, line = record["redis_version"], record["major"]
+        self.assertEqual(set(release.tags(line, "alpine3.22", "backup", "redis")), {f"abruncloud/redis:{version}-alpine3.22-backup", f"abruncloud/redis:{line}-alpine3.22-backup", f"abruncloud/redis:{version}-backup", f"abruncloud/redis:{line}-backup"})
     def test_patch_inputs_routine_but_distribution_and_line_not(self):
         lock = json.loads((ROOT / "images/redis/versions.lock.json").read_text())
         updated = copy.deepcopy(lock)
