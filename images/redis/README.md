@@ -101,6 +101,11 @@ recorded in release provenance. The archive includes upstream bundled dependency
 sources and notices. Alpine packages retain their own licenses and source
 availability. The tools are generic and contain no Abrun platform-specific jobs.
 
+Daily release builds also refresh signed Alpine packages even when the base
+image digest and Redis version remain unchanged. They run the same native tests,
+security gate and signed promotion before any alias moves; existing digest pins
+remain unchanged.
+
 Discovery follows only the explicitly reviewed `8.2` line and Alpine 3.22, using
 the official-image source Dockerfile checksum. Patch/source/base changes open
 qualified update PRs; major/minor lines and distribution changes require review.
