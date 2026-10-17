@@ -59,7 +59,7 @@ class MySQLAutomationTests(unittest.TestCase):
 
     def test_shared_required_check_covers_both_products(self):
         workflow = (release.ROOT / ".github/workflows/check.yml").read_text()
-        self.assertIn("needs: [metadata, native-test, mysql-native-test, redis-native-test]", workflow)
+        self.assertIn("needs: [metadata, native-test, mysql-native-test, redis-native-test, clickhouse-native-test]", workflow)
         self.assertIn('test "$MYSQL_TESTS" = success', workflow)
 
     def test_discovery_is_exact_head_protected_and_explicitly_dispatched(self):
