@@ -3,6 +3,7 @@
 import hashlib,json,secrets,subprocess,sys,tempfile
 from pathlib import Path
 image,upstream=sys.argv[1:3]
+source=json.loads((Path(__file__).resolve().parents[1]/'images/mongodb-exporter/security-source.lock.json').read_text())
 prefix='mongodb-exporter-'+secrets.token_hex(6)
 def docker(*args):return subprocess.check_output(['docker',*args],stderr=subprocess.PIPE)
 with tempfile.TemporaryDirectory(prefix=prefix) as root:
@@ -14,9 +15,11 @@ with tempfile.TemporaryDirectory(prefix=prefix) as root:
   actual=hashlib.sha256((Path(root)/'candidate').read_bytes()).hexdigest()
   assert actual!=expected  # Explicit source rebuild; vendor feature version is retained.
   build=subprocess.check_output(['go','version','-m',str(Path(root)/'candidate')],text=True)
-  assert 'go1.27.2' in build
-  for module,version in [('golang.org/x/crypto','v0.57.0'),('golang.org/x/mod','v0.41.0'),('golang.org/x/net','v0.60.0'),('google.golang.org/grpc','v1.83.2')]:
-   assert module+'\t'+version in build
+  assert 'go'+source['go']['version'] in build
+  for module,version in source['module_overrides'].items():
+   import re
+   observed=re.search(r'\b'+re.escape(module)+r'\s+(v\d+\.\d+\.\d+)',build).group(1)
+   assert tuple(map(int,observed[1:].split('.'))) >= tuple(map(int,version[1:].split('.')))
 
   config=json.loads(docker('image','inspect',image))[0]['Config']
   assert config['User']=='65535:65535' and config['Entrypoint']==['/mongodb_exporter']

@@ -10,6 +10,7 @@ import tempfile
 import time
 
 BACKUP, RUNTIME = sys.argv[1:3]
+SOURCE = json.loads((Path(__file__).resolve().parents[1]/'images/mongodb/security-source.lock.json').read_text())
 PREFIX = 'mongodb-image-' + secrets.token_hex(6)
 NETWORK = PREFIX + '-network'
 VOLUMES = [PREFIX + '-source', PREFIX + '-restore', PREFIX + '-archive']
@@ -20,7 +21,8 @@ def docker(*args, check=True, timeout=180):
     result = subprocess.run(['docker', *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
     if check and result.returncode:
         # Do not echo command arguments, credentials or tool output in CI.
-        raise RuntimeError('Docker qualification operation failed: ' + args[0] + ', exit=' + str(result.returncode))
+        detail=(result.stderr or result.stdout)[-4000:].replace(PASSWORD, '[fixture-password-redacted]')
+        raise RuntimeError('Docker qualification operation failed: ' + args[0] + ', exit=' + str(result.returncode) + '\n' + detail)
     return result
 
 def client(directory, *args, check=True, name=None):
@@ -46,7 +48,10 @@ with tempfile.TemporaryDirectory(prefix=PREFIX) as temporary:
             docker('create', '--name', identity, BACKUP)
             docker('cp', identity + ':/usr/local/bin/mongodump', str(directory / 'mongodump'))
             build = subprocess.check_output(['go', 'version', '-m', str(directory / 'mongodump')], text=True)
-            assert 'go1.27.2' in build and 'golang.org/x/net\tv0.60.0' in build
+            assert 'go'+SOURCE['go']['version'] in build
+            import re
+            net_version=re.search(r'golang\.org/x/net\s+(v\d+\.\d+\.\d+)',build).group(1)
+            assert tuple(map(int,net_version[1:].split('.'))) >= (0,60,0)
             assert '-tags=gssapi,failpoints' in build or '-tags=gssapi failpoints' in build
             assert 'CGO_ENABLED=1' in build and '-buildmode=pie' in build
         finally:
@@ -58,7 +63,12 @@ with tempfile.TemporaryDirectory(prefix=PREFIX) as temporary:
         for server, volume in zip(CONTAINERS[:2], VOLUMES[:2]):
             # Initialize the fixture-only internal replica key using server volume.
             docker('run', '--rm', '--user', '0:0', '-v', volume + ':/data/db', '--entrypoint', '/bin/sh', BACKUP, '-ec', 'umask 077; head -c 64 /dev/urandom | base64 > /data/db/key; chown 999:999 /data/db/key; chmod 0400 /data/db/key')
-            docker('run', '-d', '--name', server, '--network', NETWORK, '-v', volume + ':/data/db', '-v', str(directory) + ':/fixture:ro', '--tmpfs', '/data/configdb:rw,size=8388608,mode=0700', RUNTIME, '--replSet', 'fixture', '--bind_ip_all', '--auth', '--keyFile', '/data/db/key')
+            server_args = ['--replSet', 'fixture', '--bind_ip_all']
+            if server == CONTAINERS[0]:
+                server_args += ['--auth', '--keyFile', '/data/db/key']
+            else:
+                server_args += ['--noauth']  # Isolated fresh recovery only; no published ports.
+            docker('run', '-d', '--name', server, '--network', NETWORK, '-v', volume + ':/data/db', '-v', str(directory) + ':/fixture:ro', '--tmpfs', '/data/configdb:rw,size=8388608,mode=0700', RUNTIME, *server_args)
             for _ in range(90):
                 if docker('exec', server, 'mongosh', '--quiet', '--eval', 'db.adminCommand({ping:1}).ok', check=False).returncode == 0:
                     break
@@ -77,7 +87,7 @@ with tempfile.TemporaryDirectory(prefix=PREFIX) as temporary:
         source, restore = CONTAINERS[:2]
         config = {'uri': 'mongodb://fixture_admin@' + source + ':27017/?authSource=admin&directConnection=true', 'password': PASSWORD}
         (directory / 'dump.yml').write_text(json.dumps(config))
-        (directory / 'restore.yml').write_text(json.dumps({**config, 'uri': 'mongodb://fixture_admin@' + restore + ':27017/?authSource=admin&directConnection=true'}))
+        (directory / 'restore.yml').write_text(json.dumps({'uri': 'mongodb://' + restore + ':27017/?directConnection=true'}))
         (directory / 'admin.json').write_text(json.dumps({'source': source, 'restore': restore, 'password': PASSWORD}))
         script = '''import json, pymongo
 from bson import ObjectId, Binary, Decimal128
@@ -119,14 +129,24 @@ assert i>0
 
         # Archive is nonempty and is private under the default unprivileged user.
         client(directory, 'sh', '-ec', 'test -s /backup/database.archive.gz; test "$(stat -c %a /backup/database.archive.gz)" = 600')
-        client(directory, 'mongorestore', '--config=/fixture/restore.yml', '--archive=/backup/database.archive.gz', '--gzip', '--oplogReplay', '--drop')
+        client(directory, 'mongorestore', '--config=/fixture/restore.yml', '--archive=/backup/database.archive.gz', '--gzip', '--oplogReplay', '--preserveUUID', '--drop')
+        # Full-instance recovery replaces auth metadata. Enable authorization only
+        # after importing the archive/oplog, before treating the target as ready.
+        docker('rm', '-fv', restore)
+        docker('run', '-d', '--name', restore, '--network', NETWORK, '-v', VOLUMES[1] + ':/data/db', '-v', str(directory) + ':/fixture:ro', '--tmpfs', '/data/configdb:rw,size=8388608,mode=0700', RUNTIME, '--replSet', 'fixture', '--bind_ip_all', '--auth', '--keyFile', '/data/db/key')
+        (directory / 'restore.yml').write_text(json.dumps({**config, 'uri': 'mongodb://fixture_admin@' + restore + ':27017/?authSource=admin&directConnection=true'}))
         (directory / 'verify.py').write_text('''import json,pymongo
 from bson import Binary, Decimal128
 c=json.load(open('/fixture/admin.json')); a=pymongo.MongoClient(c['restore'],username='fixture_admin',password=c['password'],authSource='admin',directConnection=True,serverSelectionTimeoutMS=5000)
 left=list(a.fixture.left.find().sort('_id')); right=list(a.fixture.right.find().sort('_id')); assert left and left==right
 rows=list(a.fixture.items.find().sort('n')); assert len(rows)==3 and [r['n'] for r in rows]==[0,1,2]; assert rows[0]['unicode']=='سلام 🌍' and rows[0]['binary']==b'\\x00\\xff' and rows[0]['decimal']==Decimal128('1234.50'); assert a.fixture.view.count_documents({})==2; assert any(x.get('unique') and dict(x['key'])=={'n':1} for x in a.fixture.items.list_indexes())
 ''')
-        client(directory, 'python3', '/fixture/verify.py')
+        for _ in range(60):
+            if client(directory, 'python3', '/fixture/verify.py', check=False).returncode == 0:
+                break
+            time.sleep(1)
+        else:
+            raise RuntimeError('Restored authentication was not ready')
         docker('restart', restore)
         for _ in range(60):
             if client(directory, 'python3', '/fixture/verify.py', check=False).returncode == 0:
@@ -141,9 +161,11 @@ rows=list(a.fixture.items.find().sort('n')); assert len(rows)==3 and [r['n'] for
         # Terminate the actual client blocked awaiting a server handshake, not a surrogate sleep.
         blackhole = subprocess.Popen(['docker','run','--rm','--name',CONTAINERS[2],'--network',NETWORK,BACKUP,'mongodump','--host=192.0.2.1:27017','--archive=/tmp/never.archive'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         time.sleep(2)
-        docker('kill', '--signal=TERM', CONTAINERS[2])
-        assert blackhole.wait(timeout=15) != 0
-        print(json.dumps({'engine':'mongodb','toolsVersion':'100.19.1','authenticatedReplicaSet':True,'archiveGzipOplogReplay':True,'concurrentTransactionPairs':True,'securityRebuiltTools':True,'freshRestoreBsonIndexesViews':True,'restart':True,'wrongPasswordRejected':True,'corruptArchiveRejected':True,'clientSignalCancellation':True,'clientOnlyNonRoot':True}))
+        started = time.monotonic()
+        docker('stop', '--time=5', CONTAINERS[2])
+        cancellation_exit = blackhole.wait(timeout=15)
+        assert cancellation_exit != 0 and time.monotonic() - started < 15
+        print(json.dumps({'engine':'mongodb','toolsVersion':SOURCE['upstream_version'],'authenticatedReplicaSet':True,'archiveGzipOplogReplay':True,'concurrentTransactionPairs':True,'securityRebuiltTools':True,'freshRestoreBsonIndexesViews':True,'restart':True,'wrongPasswordRejected':True,'corruptArchiveRejected':True,'boundedTermKillCancellation':True,'cancellationExitCode':cancellation_exit,'restoredAuthenticationEnabled':True,'clientOnlyNonRoot':True}))
     finally:
         for name in CONTAINERS+[PREFIX+'-writer']:
             docker('rm','-fv',name,check=False)

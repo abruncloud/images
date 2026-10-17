@@ -45,6 +45,21 @@ class MongoDBImagesTests(unittest.TestCase):
   updated['tools']['version']='100.20.0';self.assertNotEqual(before,mongodb_discover.review_inputs(updated))
   item['mongodb_version']='8.2.0'
   with self.assertRaises(ValueError):mongodb_discover.review_inputs(updated)
+ def test_security_rebuild_inputs_and_dependency_graph_are_explicit(self):
+  for product in ['mongodb','mongodb-exporter']:
+   source=json.loads((ROOT/'images'/product/'security-source.lock.json').read_text())
+   self.assertRegex(source['go']['version'],r'^1\.27\.\d+$')
+   self.assertTrue(source['addressed_cves'])
+   self.assertEqual(source['basis']['exceptions'],[])
+   module=(ROOT/'images'/product/'security-build/go.mod').read_text()
+   for path,version in source['module_overrides'].items():self.assertIn(path+' '+version,module)
+   self.assertTrue((ROOT/'images'/product/'security-build/go.sum').is_file())
+   self.assertIn('Explicit security source rebuild',(ROOT/'images'/product/'README.md').read_text())
+ def test_security_source_changes_are_nonroutine(self):
+  lock=json.loads((ROOT/'images/mongodb/versions.lock.json').read_text())
+  before=mongodb_discover.review_inputs(lock)
+  with patch.object(mongodb_discover,'source_review_inputs',return_value={'module_overrides':{'golang.org/x/net':'v99.0.0'}}):
+   self.assertNotEqual(before,mongodb_discover.review_inputs(lock))
  def test_native_security_and_required_ci(self):
   check=(ROOT/'.github/workflows/check.yml').read_text()
   for job in ['mongodb-native-test','mongodb-exporter-native-test']:self.assertIn(job,check)
