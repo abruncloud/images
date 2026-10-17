@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Rebuild the same gosu source with a patched compiler; only artifacts enter runtime.
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.2-trixie@sha256:e58d6f83b3416618d8bcac2b3dde1b7f7e3c4a77d25e88637f8bbae81536c48d AS gosu-build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e AS gosu-build
 ARG TARGETARCH
 ENV GOTOOLCHAIN=local CGO_ENABLED=0
 RUN set -eux; \
