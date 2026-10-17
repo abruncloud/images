@@ -21,7 +21,7 @@
         "linux/amd64",
         "linux/arm64"
       ],
-      "backup_base_image": "docker.io/library/oraclelinux:9-slim@sha256:fdf4581abc841d49f63cf456ea92f8152a80b5bdc62d5409a4e77827b824265c"
+      "backup_base_image": "docker.io/library/oraclelinux:9-slim@sha256:2feab5eb9e442ab342de183d12aa72a619e8080bee27ba1957a2005cf6a3879b"
     }
   ]
 }

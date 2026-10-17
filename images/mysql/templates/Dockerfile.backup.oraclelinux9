@@ -11,6 +11,7 @@ RUN set -eux; \
       'enabled=1' 'gpgcheck=1' 'gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-mysql' \
       > /etc/yum.repos.d/mysql-client.repo; \
     rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql; \
+    microdnf update -y --setopt=install_weak_deps=0; \
     microdnf install -y --setopt=install_weak_deps=0 ca-certificates util-linux curl-minimal jq python3 tar gzip coreutils \
       mysql-community-client-{{MYSQL_CLIENT_RPM_VERSION}}; \
     microdnf clean all; \

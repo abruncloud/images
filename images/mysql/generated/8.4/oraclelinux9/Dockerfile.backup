@@ -2,7 +2,7 @@
 FROM docker.io/library/mysql:8.4.11-oraclelinux9@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70 AS tools-source
 
 # Independent client artifact: the source supplies only its trusted signing key.
-FROM docker.io/library/oraclelinux:9-slim@sha256:fdf4581abc841d49f63cf456ea92f8152a80b5bdc62d5409a4e77827b824265c
+FROM docker.io/library/oraclelinux:9-slim@sha256:2feab5eb9e442ab342de183d12aa72a619e8080bee27ba1957a2005cf6a3879b
 COPY --from=tools-source /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql
 RUN set -eux; \
     printf '%s\n' '[mysql-community-client]' \
@@ -11,6 +11,7 @@ RUN set -eux; \
       'enabled=1' 'gpgcheck=1' 'gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-mysql' \
       > /etc/yum.repos.d/mysql-client.repo; \
     rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql; \
+    microdnf update -y --setopt=install_weak_deps=0; \
     microdnf install -y --setopt=install_weak_deps=0 ca-certificates util-linux curl-minimal jq python3 tar gzip coreutils \
       mysql-community-client-8.4.11-1.el9; \
     microdnf clean all; \
