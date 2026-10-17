@@ -67,7 +67,10 @@ def wait_client(name, expected=0, timeout=90):
 try:
     docker("network", "create", "--internal", network)
     source = prefix + "-source"
-    start(source, "--network", network, "--network-alias", "redis-source", "-v", str(root / "tls") + ":/tls:ro", "-v", str(root / "redis.conf") + ":/fixture/redis.conf:ro", runtime, "redis-server", "/fixture/redis.conf")
+    source_volume = prefix + "-source-data"
+    volumes.append(source_volume)
+    docker("volume", "create", source_volume)
+    start(source, "-v", source_volume + ":/data", "--network", network, "--network-alias", "redis-source", "-v", str(root / "tls") + ":/tls:ro", "-v", str(root / "redis.conf") + ":/fixture/redis.conf:ro", runtime, "redis-server", "/fixture/redis.conf")
     for attempt in range(60):
         if cli("operator", "PING", check=False).stdout.strip() == "PONG": break
         time.sleep(1)
@@ -123,9 +126,13 @@ try:
     assert not docker("run", "--rm", "--entrypoint", "sh", backup, "-c", "command -v redis-server || command -v redis-sentinel", check=False).stdout.strip()
     print(json.dumps({"version": "8.2.10", "backup": backup, "runtime": runtime, "architecture": docker("image", "inspect", backup, "--format", "{{.Architecture}}").stdout.strip(), "tls_acl": "pass", "module_rdb_restore": ["json", "search", "timeseries", "bloom", "vectorset"], "checker_corruption_and_rename": "pass", "cancellation_partial": "pass", "published_ports": []}, sort_keys=True))
 finally:
-    for name in reversed(containers): docker("rm", "-f", name, check=False)
+    for name in reversed(containers): docker("rm", "-f", "-v", name, check=False)
     for name in volumes: docker("volume", "rm", name, check=False)
     docker("network", "rm", network, check=False)
     shutil.rmtree(root)
     leftovers = docker("ps", "-aq", "--filter", "name=" + prefix).stdout.strip()
     if leftovers: raise AssertionError("Qualification containers were not removed")
+    if docker("volume", "ls", "-q", "--filter", "name=" + prefix).stdout.strip():
+        raise AssertionError("Qualification volumes were not removed")
+    if docker("network", "ls", "-q", "--filter", "name=" + prefix).stdout.strip():
+        raise AssertionError("Qualification network was not removed")
