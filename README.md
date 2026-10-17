@@ -4,8 +4,11 @@ Reusable container images published to the `abruncloud` organization on Docker H
 Images work independently of the Abrun platform and preserve documented upstream
 runtime conventions.
 
-The initial image is [PostgreSQL](images/postgres/README.md), with Debian and Alpine
-variants, pgvector, and backup-tool tags.
+Database tooling includes [PostgreSQL](images/postgres/README.md),
+[MySQL client backups](images/mysql/README.md), and
+[Redis client backups](images/redis/README.md). Redis and MySQL use official server
+images and generic, separately qualified client-only backup images. Existing
+PostgreSQL server recipes remain available.
 
 ## Repository layout
 

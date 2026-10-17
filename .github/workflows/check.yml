@@ -15,6 +15,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.value }}
       mysql-matrix: ${{ steps.mysql-matrix.outputs.value }}
+      redis-matrix: ${{ steps.redis-matrix.outputs.value }}
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
@@ -24,15 +25,18 @@ jobs:
           python-version: '3.13'
       - run: python3 tools/generate.py --check
       - run: python3 tools/mysql_generate.py --check
+      - run: python3 tools/redis_generate.py --check
       - name: Check tools and tests
         run: |
           python3 -m compileall -q tools
           python3 -m unittest discover -s tests -p 'test_*.py'
-          find tests images/postgres images/mysql -name '*.sh' -exec bash -n {} ';'
+          find tests images/postgres images/mysql images/redis -name '*.sh' -exec bash -n {} ';'
       - id: matrix
         run: echo "value=$(python3 tools/release.py matrix)" >> "$GITHUB_OUTPUT"
       - id: mysql-matrix
         run: echo "value=$(python3 tools/release.py --image mysql matrix --target backup)" >> "$GITHUB_OUTPUT"
+      - id: redis-matrix
+        run: echo "value=$(python3 tools/release.py --image redis matrix --target backup)" >> "$GITHUB_OUTPUT"
   native-test:
     needs: metadata
     strategy:
@@ -86,13 +90,36 @@ jobs:
       - name: Native backup and recovery qualification
         if: matrix.backup
         run: bash tests/run-mysql-backup.sh abrun-mysql-test:backup "${{ matrix.base_image }}"
+  redis-native-test:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.redis-matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        if: matrix.backup
+        with:
+          context: .
+          file: ${{ matrix.directory }}/Dockerfile.backup
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: abrun-redis-test:backup
+      - name: Native backup and recovery qualification
+        if: matrix.backup
+        run: bash tests/run-redis-backup.sh abrun-redis-test:backup "${{ matrix.base_image }}"
   required:
     if: always()
-    needs: [metadata, native-test, mysql-native-test]
+    needs: [metadata, native-test, mysql-native-test, redis-native-test]
     runs-on: ubuntu-24.04
     steps:
       - env:
           METADATA: ${{ needs.metadata.result }}
           TESTS: ${{ needs.native-test.result }}
           MYSQL_TESTS: ${{ needs.mysql-native-test.result }}
-        run: test "$METADATA" = success && test "$TESTS" = success && test "$MYSQL_TESTS" = success
+          REDIS_TESTS: ${{ needs.redis-native-test.result }}
+        run: test "$METADATA" = success && test "$TESTS" = success && test "$MYSQL_TESTS" = success && test "$REDIS_TESTS" = success

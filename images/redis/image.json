@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "redis",
+  "category": "database",
+  "repository": "abruncloud/redis",
+  "supported_majors": [
+    "8.2"
+  ],
+  "variants": [
+    "alpine3.22"
+  ],
+  "default_variant": "alpine3.22",
+  "backup_variant": "alpine3.22",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "targets": [
+    "backup"
+  ],
+  "upstream": "https://github.com/redis/docker-library-redis"
+}
