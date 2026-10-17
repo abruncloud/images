@@ -6,7 +6,8 @@ import xml.etree.ElementTree as ET
 backup,server=sys.argv[1:3]
 identity='clickhouse-client-qual-'+uuid.uuid4().hex[:12]
 network=identity+'-network'; server_name=identity+'-server'; owned=[]
-root=pathlib.Path(tempfile.mkdtemp(prefix=identity+'-')); archive=root/'archives';archive.mkdir();archive.chmod(0o777)
+private_root=pathlib.Path(tempfile.mkdtemp(prefix=identity+'-'));root=private_root/'mounted';root.mkdir(mode=0o755)
+archive=private_root/'archives';archive.mkdir();archive.chmod(0o777)
 password=secrets.token_urlsafe(24)
 def command(*args,timeout=90,check=True):
  result=subprocess.run(list(args),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=timeout)
@@ -95,9 +96,9 @@ finally:
  command('docker','network','rm',network,check=False)
  # Container files may be owned by UID101 on native Linux.
  if archive.exists():command('docker','run','--rm','--user','0:0','--mount','type=bind,src='+str(archive)+',dst=/owned',backup,'sh','-ec','find /owned -mindepth 1 -delete',check=False)
- shutil.rmtree(root,ignore_errors=True)
+ shutil.rmtree(private_root,ignore_errors=True)
  for name in [*owned,server_name]:
   if command('docker','inspect',name,check=False).returncode==0:raise RuntimeError('owned container cleanup failed')
  if command('docker','network','inspect',network,check=False).returncode==0:raise RuntimeError('owned network cleanup failed')
- if root.exists():raise RuntimeError('owned fixture file cleanup failed')
+ if private_root.exists():raise RuntimeError('owned fixture file cleanup failed')
 print(json.dumps(receipt,sort_keys=True))
