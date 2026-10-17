@@ -82,8 +82,25 @@ done
 docker kill --signal=TERM "$cancelled" >/dev/null
 status=$(docker wait "$cancelled");test "$status" = 143 || { echo 'cancel exit status mismatch' >&2;exit 1;}
 docker run --rm --entrypoint sh -v "$output:/output" "$backup" -ec 'test ! -e /output/cancelled.sql;set -- /output/cancelled.sql.partial.*;test ! -e "$1"'
-# Source cleanup is explicitly an isolated fixture administrator action.
-printf "SELECT CONCAT('KILL CONNECTION ',ID,';') FROM performance_schema.processlist WHERE USER='root' AND (INFO='SELECT SLEEP(60)' OR HOST NOT LIKE 'localhost%%');\n" | admin "$source" | admin "$source" >/dev/null
+# MySQL may defer observing a disconnected client while its statement waits
+# for our deliberate metadata lock. Release only that fixture lock holder first.
+locker_id=$(printf "SELECT ID FROM performance_schema.processlist WHERE USER='root' AND HOST LIKE 'localhost%%' AND INFO='SELECT SLEEP(60)' LIMIT 1;\n" | admin "$source")
+if test -n "$locker_id";then
+ case "$locker_id" in *[!0-9]*) echo 'invalid fixture lock-holder identity' >&2;exit 1;;esac
+ status=0
+ printf 'KILL CONNECTION %s;\n' "$locker_id" | admin "$source" >/dev/null 2>"$secrets/locker-stop-error" || status=$?
+ # An already-finished lock holder is safe; any other SQL error remains fatal.
+ if test "$status" -ne 0 && ! grep -Eq '^ERROR 1094 \(HY000\)' "$secrets/locker-stop-error";then
+  cat "$secrets/locker-stop-error" >&2;exit "$status"
+ fi
+fi
 wait "$locker" 2>/dev/null || :
+# Verify the cancelled capture leaves no remote connection after unblocking.
+count=0
+while :;do
+ active=$(printf "SELECT COUNT(*) FROM performance_schema.processlist WHERE USER='root' AND HOST NOT LIKE 'localhost%%';\n" | admin "$source")
+ test "$active" = 0 && break
+ count=$((count+1));test "$count" -lt 30 || { echo 'cancelled client connection remained active after fixture unlock' >&2;exit 1;};sleep 1
+done
 status=0;docker run --rm "$backup" unsupported >/dev/null 2>&1 || status=$?;test "$status" = 2
 echo 'MySQL client-only artifact, caching_sha2 authentication, verified TLS, native object restore, and atomic client cancellation passed'

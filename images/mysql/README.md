@@ -30,7 +30,7 @@ docker run --rm --network your-private-network \
 
 Use `restore /output/app.sql app` against a prepared target database with an appropriately authorized user. Users remain responsible for restoration. Logical captures include views, routines, triggers and events; they use `--single-transaction --quick --no-tablespaces --set-gtid-purged=OFF`. Consistency requires InnoDB tables and no concurrent DDL. There is no physical backup or point-in-time recovery support. Account privileges and definer portability must be qualified for the target workload.
 
-Dump files publish atomically without overwriting an existing file. Failed or cancelled captures remove partial files. The entrypoint forwards termination to its client process group.
+Dump files publish atomically without overwriting an existing file. Failed or cancelled captures remove partial files. The entrypoint forwards termination to its client process group. Client termination does not guarantee immediate server-side cancellation of a statement blocked on a metadata lock. Coordinators that require that guarantee must separately terminate and verify their own backup sessions.
 
 ## Build and qualification
 
