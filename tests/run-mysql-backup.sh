@@ -82,8 +82,16 @@ done
 docker kill --signal=TERM "$cancelled" >/dev/null
 status=$(docker wait "$cancelled");test "$status" = 143 || { echo 'cancel exit status mismatch' >&2;exit 1;}
 docker run --rm --entrypoint sh -v "$output:/output" "$backup" -ec 'test ! -e /output/cancelled.sql;set -- /output/cancelled.sql.partial.*;test ! -e "$1"'
-# Source cleanup is explicitly an isolated fixture administrator action.
-printf "SELECT CONCAT('KILL CONNECTION ',ID,';') FROM performance_schema.processlist WHERE USER='root' AND (INFO='SELECT SLEEP(60)' OR HOST NOT LIKE 'localhost%%');\n" | admin "$source" | admin "$source" >/dev/null
+# A cancelled capture must close its server connection before fixture teardown.
+count=0
+while :;do
+ active=$(printf "SELECT COUNT(*) FROM performance_schema.processlist WHERE USER='root' AND HOST NOT LIKE 'localhost%%';\n" | admin "$source")
+ test "$active" = 0 && break
+ count=$((count+1));test "$count" -lt 30 || { echo 'cancelled client connection remained active' >&2;exit 1;};sleep 1
+done
+# Stop only this disposable source to release the lock holder. Selecting thread
+# IDs and later KILLing them races with clients that have already disconnected.
+docker stop --time=10 "$source" >/dev/null
 wait "$locker" 2>/dev/null || :
 status=0;docker run --rm "$backup" unsupported >/dev/null 2>&1 || status=$?;test "$status" = 2
 echo 'MySQL client-only artifact, caching_sha2 authentication, verified TLS, native object restore, and atomic client cancellation passed'
