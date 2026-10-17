@@ -46,6 +46,11 @@ docker run --rm --network your-private-network \
   --query 'SELECT version() FORMAT TSVRaw'
 ```
 
+Use `--exec` for statements without result rows, such as `CREATE`, `INSERT`,
+`DROP`, `GRANT` or `SET`; normal query mode handles `SELECT`, `BACKUP`, `RESTORE`
+and `KILL` result rows. The mode is explicit so an unexpected protocol EOF is
+never converted into a successful empty result.
+
 `--query_id` sets a caller-owned operation identity, and `--timeout=30s` bounds
 execution (maximum 1h). Output is raw tab-separated scalars with a newline per row,
 bounded at 8 MiB. Requests use a 10-second dial deadline and the execution deadline

@@ -93,7 +93,7 @@ func tlsConfig(c configuration) (*tls.Config, error) {
 	return &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: name}, nil
 }
 
-func run(ctx context.Context, c configuration, query, queryID string, timeout time.Duration, out io.Writer) error {
+func run(ctx context.Context, c configuration, query, queryID string, execute bool, timeout time.Duration, out io.Writer) error {
 	tc, err := tlsConfig(c)
 	if err != nil {
 		return err
@@ -111,6 +111,9 @@ func run(ctx context.Context, c configuration, query, queryID string, timeout ti
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ctx = clickhouse.Context(ctx, clickhouse.WithQueryID(queryID))
+	if execute {
+		return conn.Exec(ctx, query)
+	}
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return err
@@ -161,6 +164,7 @@ func main() {
 	query := flag.String("query", "", "one SQL statement")
 	queryID := flag.String("query_id", "", "query identity for observation and cancellation")
 	timeout := flag.Duration("timeout", 30*time.Second, "execution deadline, maximum 1h")
+	execute := flag.Bool("exec", false, "execute a statement that returns no rows, e.g. CREATE or INSERT")
 	showVersion := flag.Bool("version", false, "print tool and official driver versions")
 	flag.Parse()
 	if *showVersion {
@@ -175,7 +179,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err == nil {
-		err = run(ctx, c, *query, *queryID, *timeout, os.Stdout)
+		err = run(ctx, c, *query, *queryID, *execute, *timeout, os.Stdout)
 	}
 	if err != nil {
 		message := err.Error()

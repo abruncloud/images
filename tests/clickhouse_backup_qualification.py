@@ -24,7 +24,7 @@ def client(sql,name=None,extra=(),config='connection.xml',timeout=60,check=True)
  args=['docker','run','--rm','--network',network,'--cap-drop=ALL','--security-opt=no-new-privileges','--read-only','--tmpfs','/tmp:rw,nosuid,nodev,noexec,size=16m',
  '--mount','type=bind,src='+str(root)+',dst=/tls,readonly','--mount','type=bind,src='+str(archive)+',dst=/backup']
  if name:args+=['--name',name];owned.append(name)
- args += [backup,'clickhouse-sql','--config-file=/tls/'+config,'--query',sql,*extra]
+ args += [backup,'clickhouse-sql','--config-file=/tls/'+config,'--query',sql,'--timeout=10s',*extra]
  return command(*args,timeout=timeout,check=check)
 
 def query(sql,**kwargs):return client(sql,**kwargs).stdout.strip()
@@ -38,13 +38,13 @@ try:
  (root/'extensions.cnf').write_text('subjectAltName=DNS:ch-fixture\nextendedKeyUsage=serverAuth\n')
  command('openssl','x509','-req','-in',str(root/'server.csr'),'-CA',str(root/'ca.pem'),'-CAkey',str(root/'ca.key'),'-CAcreateserial','-days','1','-out',str(root/'server.pem'),'-extfile',str(root/'extensions.cnf'))
  (root/'connection.xml').write_bytes(xml_config());(root/'wrong-host.xml').write_bytes(xml_config(host=server_name));(root/'wrong-ca.xml').write_bytes(xml_config(ca='/tls/wrong-ca.pem'))
- (root/'server.xml').write_text("""<clickhouse><listen_host>0.0.0.0</listen_host><tcp_port_secure>9440</tcp_port_secure><max_server_memory_usage>1073741824</max_server_memory_usage><max_thread_pool_size>128</max_thread_pool_size><background_pool_size>16</background_pool_size><background_schedule_pool_size>4</background_schedule_pool_size><background_message_broker_schedule_pool_size>2</background_message_broker_schedule_pool_size><background_distributed_schedule_pool_size>2</background_distributed_schedule_pool_size><openSSL><server><certificateFile>/tls/server.pem</certificateFile><privateKeyFile>/tls/server.key</privateKeyFile><verificationMode>none</verificationMode></server></openSSL><storage_configuration><disks><backups><type>local</type><path>/backups/</path></backups></disks></storage_configuration><backups><allowed_disk>backups</allowed_disk></backups></clickhouse>""")
+ (root/'server.xml').write_text("""<clickhouse><listen_host>0.0.0.0</listen_host><tcp_port_secure>9440</tcp_port_secure><max_server_memory_usage>1073741824</max_server_memory_usage><background_pool_size>16</background_pool_size><background_schedule_pool_size>4</background_schedule_pool_size><background_message_broker_schedule_pool_size>2</background_message_broker_schedule_pool_size><background_distributed_schedule_pool_size>2</background_distributed_schedule_pool_size><openSSL><server><certificateFile>/tls/server.pem</certificateFile><privateKeyFile>/tls/server.key</privateKeyFile><verificationMode>none</verificationMode></server></openSSL><storage_configuration><disks><backups><type>local</type><path>/backups/</path></backups></disks></storage_configuration><backups><allowed_disk>backups</allowed_disk></backups></clickhouse>""")
  (root/'users.xml').write_text('<clickhouse><users><default><password remove="1"/><password_sha256_hex>'+hashlib.sha256(password.encode()).hexdigest()+'</password_sha256_hex><networks><ip>::/0</ip></networks><profile>default</profile><quota>default</quota><access_management>1</access_management></default></users><profiles><default><max_threads>2</max_threads></default></profiles></clickhouse>')
  for file in root.iterdir():
   if file.is_file():file.chmod(0o444)
  command('docker','run','-d','--name',server_name,'--network',network,'--network-alias','ch-fixture','--memory','2g','--cpus','2',
  '--env','CLICKHOUSE_SKIP_USER_SETUP=1','--mount','type=bind,src='+str(root)+',dst=/tls,readonly',
- '--mount','type=bind,src='+str(root/'server.xml')+',dst=/etc/clickhouse-server/config.d/backup-fixture.xml,readonly',
+ '--mount','type=bind,src='+str(root/'server.xml')+',dst=/etc/clickhouse-server/config.d/zz-backup-fixture.xml,readonly',
  '--mount','type=bind,src='+str(root/'users.xml')+',dst=/etc/clickhouse-server/users.d/backup-fixture.xml,readonly',
  '--mount','type=bind,src='+str(archive)+',dst=/backups',server)
  deadline=time.monotonic()+120
@@ -56,6 +56,7 @@ try:
     logs=command('docker','logs','--tail','60',server_name,check=False)
     raise RuntimeError('server fixture failed readiness: '+(logs.stdout+logs.stderr)[-3000:].replace(password,'[redacted]'))
    time.sleep(2)
+ print('Native fixture TLS connection ready',flush=True)
  expected=server.split(':')[-1].split('-jammy')[0]
  if observed!=expected:raise RuntimeError('wrong server fixture version: '+observed)
  version=command('docker','run','--rm',backup,'clickhouse-sql','--version').stdout.strip()
@@ -65,14 +66,16 @@ try:
  command('docker','run','--rm',backup,'sh','-ec','! command -v clickhouse; ! command -v clickhouse-server; ! command -v gcc; test -x /bin/setpriv; test -x /sbin/tini')
  for config in ['wrong-host.xml','wrong-ca.xml']:
   if client('SELECT 1',config=config,check=False).returncode==0:raise RuntimeError('TLS identity/CA bypass accepted')
- query('CREATE TABLE default.fixture (id UInt64, payload String) ENGINE=MergeTree ORDER BY id')
- query("INSERT INTO default.fixture VALUES (1,'alpha'),(2,'βeta'),(3,'gamma')")
+ query('CREATE TABLE default.fixture (id UInt64, payload String) ENGINE=MergeTree ORDER BY id',extra=['--exec'])
+ query("INSERT INTO default.fixture VALUES (1,'alpha'),(2,'βeta'),(3,'gamma')",extra=['--exec'])
  if query('SELECT count(),sum(id) FROM default.fixture FORMAT TSVRaw')!='3\t6':raise RuntimeError('client query data mismatch')
  operation=str(uuid.uuid4())
  result=query("BACKUP DATABASE default TO Disk('backups','fixture.zip') SETTINGS id='"+operation+"'",extra=['--query_id='+operation,'--timeout=60s'],timeout=75)
  if 'BACKUP_CREATED' not in result:raise RuntimeError('native backup did not complete')
  command('docker','run','--rm','--mount','type=bind,src='+str(archive)+',dst=/backup,readonly',backup,'unzip','-t','/backup/fixture.zip')
- query('DROP TABLE default.fixture')
+ data=(archive/'fixture.zip').read_bytes();(archive/'truncated.zip').write_bytes(data[:-64])
+ if command('docker','run','--rm','--mount','type=bind,src='+str(archive)+',dst=/backup,readonly',backup,'unzip','-t','/backup/truncated.zip',check=False).returncode==0:raise RuntimeError('truncated archive accepted')
+ query('DROP TABLE default.fixture',extra=['--exec'])
  query("RESTORE DATABASE default FROM Disk('backups','fixture.zip')",extra=['--timeout=60s'],timeout=75)
  if query('SELECT count(),sum(id),anyIf(payload,id=2) FROM default.fixture FORMAT TSVRaw')!='3\t6\tβeta':raise RuntimeError('native restore changed data')
  # Native context cancellation must stop an owned running query, not merely its CLI.
@@ -91,7 +94,7 @@ try:
   if query("SELECT count() FROM system.processes WHERE query_id='"+cancel_id+"' FORMAT TSVRaw")=='0':break
   time.sleep(.5)
  else:raise RuntimeError('cancelled native query remained active')
- receipt={'server_version':observed,'client':version,'native_backup_restore':True,'tls_peer_and_ca_verified':True,'native_query_cancellation':True,'client_uid':10001,'server_binary_absent':True,'cleanup':True}
+ receipt={'server_version':observed,'client':version,'native_backup_restore':True,'truncated_archive_rejected':True,'tls_peer_and_ca_verified':True,'native_query_cancellation':True,'client_uid':10001,'server_binary_absent':True,'cleanup':True}
 finally:
  for name in [*owned,server_name]:command('docker','rm','-f',name,check=False)
  command('docker','network','rm',network,check=False)
