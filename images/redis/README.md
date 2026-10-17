@@ -49,8 +49,16 @@ docker run --rm --network database-network \
   --rdb /backup/dump.rdb.partial
 # Validate before atomically renaming/uploading an artifact.
 docker run --rm -v ./backups:/backup:ro abruncloud/redis:8.2.10-backup \
-  redis-check-rdb /backup/dump.rdb.partial
+  timeout --signal=KILL 120s redis-check-rdb /backup/dump.rdb.partial
 ```
+
+Redis 8.2.10’s upstream checker can stall on a truncated RDB containing module
+values; this was independently reproduced with the unchanged official server
+image. Bound validation with `timeout` as above. A timeout is a failed validation,
+never a valid backup. The raw upstream parser is retained; no parser fork or
+corruption exception is applied. Qualification requires valid module data to
+check and restore successfully, and truncated input to reject directly or by
+the explicit deadline.
 
 A supervisor must remove partial output after failure/cancellation and publish
 only after client exit zero plus a successful RDB check. The generic client does

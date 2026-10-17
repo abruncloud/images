@@ -94,7 +94,9 @@ try:
     assert "RDB looks OK" in check.stdout
     bad = root / "work/bad.rdb"
     docker("run", "--rm", "-v", str(root / "work") + ":/backup", backup, "python3", "-c", 'from pathlib import Path; Path("/backup/bad.rdb").write_bytes(Path("/backup/dump.rdb").read_bytes()[:-10])')
-    assert docker("run", "--rm", "-v", str(root / "work") + ":/backup:ro", backup, "redis-check-rdb", "/backup/bad.rdb", check=False).returncode != 0
+    corruption = docker("run", "--rm", "-v", str(root / "work") + ":/backup:ro", backup, "timeout", "--signal=KILL", "5s", "redis-check-rdb", "/backup/bad.rdb", check=False, timeout=15)
+    assert corruption.returncode != 0
+    corruption_rejected = "timeoutRejected" if corruption.returncode in {124, 137} else "checkerRejected"
     # Renaming the checker must never turn its shared upstream code into a server.
     assert docker("run", "--rm", "--entrypoint", "sh", backup, "-c", "cp /usr/local/bin/redis-check-rdb /tmp/renamed; /tmp/renamed --port 6379", check=False).returncode != 0
     restored = prefix + "-restore"
@@ -124,7 +126,7 @@ try:
         assert docker("run", "--rm", "-v", str(root / "work") + ":/backup:ro", backup, "redis-check-rdb", "/backup/partial.rdb", check=False).returncode != 0
     # The generic client does not delete arbitrary partial paths; callers publish only after a successful check.
     assert not docker("run", "--rm", "--entrypoint", "sh", backup, "-c", "command -v redis-server || command -v redis-sentinel", check=False).stdout.strip()
-    print(json.dumps({"version": "8.2.10", "backup": backup, "runtime": runtime, "architecture": docker("image", "inspect", backup, "--format", "{{.Architecture}}").stdout.strip(), "tls_acl": "pass", "module_rdb_restore": ["json", "search", "timeseries", "bloom", "vectorset"], "checker_corruption_and_rename": "pass", "cancellation_partial": "pass", "published_ports": []}, sort_keys=True))
+    print(json.dumps({"version": "8.2.10", "backup": backup, "runtime": runtime, "architecture": docker("image", "inspect", backup, "--format", "{{.Architecture}}").stdout.strip(), "tls_acl": "pass", "module_rdb_restore": ["json", "search", "timeseries", "bloom", "vectorset"], "checker_corruption_and_rename": "pass", "corruption_rejection": corruption_rejected, "cancellation_partial": "pass", "published_ports": []}, sort_keys=True))
 finally:
     for name in reversed(containers): docker("rm", "-f", "-v", name, check=False)
     for name in volumes: docker("volume", "rm", name, check=False)
