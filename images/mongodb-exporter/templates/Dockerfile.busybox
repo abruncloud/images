@@ -7,7 +7,7 @@ RUN curl --fail --location --retry 3 --output /tmp/source.tar.gz '{{SOURCE_URL}}
 COPY images/mongodb-exporter/security-build/go.mod images/mongodb-exporter/security-build/go.sum ./
 ENV GOFLAGS=-mod=readonly GOTOOLCHAIN=local
 RUN go mod download && go mod verify
-RUN CGO_ENABLED=0 go test ./tools/... ./
+RUN CGO_ENABLED=0 go test ./
 RUN mkdir /out /licenses \
  && CGO_ENABLED=0 go build -trimpath \
       -ldflags='-s -w -X main.version=v{{EXPORTER_VERSION}} -X main.commit={{UPSTREAM_COMMIT}} -X main.buildDate=security-source-rebuild' \
