@@ -21,7 +21,7 @@ LABEL org.opencontainers.image.title="Redis client and RDB backup tools" \
       org.opencontainers.image.version="{{REDIS_VERSION}}" \
       org.opencontainers.image.source="https://github.com/abruncloud/images" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
-RUN apk add --no-cache ca-certificates libssl3 libcrypto3 curl jq python3 tar gzip coreutils util-linux-misc \
+RUN apk add --no-cache ca-certificates libssl3 libcrypto3 curl jq python3 tar gzip coreutils util-linux-misc tini \
  && addgroup -g 10001 backup \
  && adduser -D -u 10001 -G backup backup \
  && mkdir /backup && chown backup:backup /backup
@@ -35,5 +35,5 @@ RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh \
  && test ! -e /usr/local/bin/redis-server
 USER 10001:10001
 WORKDIR /backup
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini", "-g", "--", "docker-entrypoint.sh"]
 CMD ["redis-cli", "--help"]

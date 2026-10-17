@@ -19,7 +19,9 @@ The image includes TLS-enabled `redis-cli`, `redis-check-rdb`, curl, jq, Python 
 tar, gzip, coreutils (including sha256sum and timeout), and setsid. The default
 user is UID/GID 10001; `/backup` is writable by that user. Bind mounts need matching
 permissions. The entrypoint sets a private umask, forwards arguments verbatim,
-and executes commands directly so TERM reaches the client. Arguments starting
+and executes commands under tini with process-group signal forwarding. This avoids
+Linux PID 1 ignoring the client’s default TERM disposition and reaps child
+processes. Arguments starting
 with `-` are passed to `redis-cli`. No ports or server credentials are baked in.
 
 Redis upstream implements `redis-check-rdb` inside the server executable and

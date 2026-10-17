@@ -19,6 +19,7 @@ class RedisGenerateTests(unittest.TestCase):
         self.assertIn("restrict-checker.py", recipe)
         self.assertIn("/usr/share/redis-source/", recipe)
         self.assertIn("USER 10001:10001", recipe)
+        self.assertIn('ENTRYPOINT ["/sbin/tini", "-g", "--", "docker-entrypoint.sh"]', recipe)
         self.assertNotIn("COPY --from=build /out/redis-server", recipe)
     def test_unreviewed_inputs_fail_closed(self):
         original = generate.IMAGE
