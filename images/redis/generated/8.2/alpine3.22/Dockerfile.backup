@@ -11,7 +11,7 @@ RUN curl --fail --location --retry 3 --output /tmp/redis.tar.gz https://github.c
 # Force checker dispatch before parsing server flags; even renaming cannot serve.
 COPY images/redis/backup/restrict-checker.py /tmp/restrict-checker.py
 RUN python3 /tmp/restrict-checker.py src/server.c \
- && make -j "$(getconf _NPROCESSORS_ONLN)" BUILD_TLS=yes BUILD_WITH_MODULES=no MALLOC=libc REDIS_CFLAGS= REDIS_LDFLAGS= redis-cli redis-server \
+ && make -C src -j "$(getconf _NPROCESSORS_ONLN)" BUILD_TLS=yes BUILD_WITH_MODULES=no MALLOC=libc REDIS_CFLAGS= REDIS_LDFLAGS= redis-cli redis-server \
  && mkdir /out \
  && cp src/redis-cli /out/redis-cli \
  && cp src/redis-server /out/redis-check-rdb \
