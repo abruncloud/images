@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "clickhouse",
+  "category": "database",
+  "repository": "abruncloud/clickhouse",
+  "supported_majors": [
+    "26.8"
+  ],
+  "variants": [
+    "alpine3.22"
+  ],
+  "default_variant": "alpine3.22",
+  "backup_variant": "alpine3.22",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "targets": [
+    "backup"
+  ],
+  "upstream": "https://github.com/ClickHouse/clickhouse-go"
+}

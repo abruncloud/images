@@ -1,0 +1,6 @@
+.PHONY: test lint
+test:
+	go test ./...
+lint:
+	test -z "$$(gofmt -l *.go)"
+	go vet ./...
