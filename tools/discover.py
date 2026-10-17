@@ -25,7 +25,7 @@ def fetch(url, headers=None):
         return response.read(), response.headers
 
 def resolve(tag, repository="postgres"):
-    if repository not in {"postgres", "mysql", "redis", "golang", "debian", "alpine", "oraclelinux"}:
+    if repository not in {"postgres", "mysql", "redis", "clickhouse", "golang", "debian", "alpine", "oraclelinux"}:
         raise ValueError("Unsupported official image repository")
     token = json.loads(fetch("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/" + repository + ":pull")[0])["token"]
     raw, headers = fetch("https://registry-1.docker.io/v2/library/" + repository + "/manifests/" + tag,

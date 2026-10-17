@@ -9,6 +9,7 @@ RUN mkdir /licenses \
       test -n "$directory" || continue; destination="/licenses/$name"; mkdir -p "$destination"; \
       find "$directory" -maxdepth 1 -type f \( -iname 'license*' -o -iname 'notice*' -o -iname 'copying*' -o -iname 'copyright*' \) -exec cp {} "$destination/" \;; \
     done
+RUN test -z "$(gofmt -l *.go)" && go test ./... && go vet ./...
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/clickhouse-sql .
 FROM {{BACKUP_BASE_IMAGE}}
 LABEL org.opencontainers.image.title="ClickHouse client-only backup tools" \

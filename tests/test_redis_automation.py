@@ -35,7 +35,7 @@ class RedisAutomationTests(unittest.TestCase):
         self.assertIn("tests/run-redis-backup.sh", workflow)
     def test_existing_required_ci_includes_redis(self):
         workflow = (ROOT / ".github/workflows/check.yml").read_text()
-        self.assertIn("needs: [metadata, native-test, mysql-native-test, redis-native-test]", workflow)
+        self.assertIn("needs: [metadata, native-test, mysql-native-test, redis-native-test, clickhouse-native-test]", workflow)
         self.assertIn('test "$REDIS_TESTS" = success', workflow)
 
     def test_native_scan_identity_is_explicit(self):
