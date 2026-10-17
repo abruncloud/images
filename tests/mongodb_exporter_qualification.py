@@ -11,13 +11,20 @@ with tempfile.TemporaryDirectory(prefix=prefix) as root:
    docker('create','--name',prefix+'-'+label,ref)
    docker('cp',prefix+'-'+label+':/mongodb_exporter',str(Path(root)/label))
   expected=hashlib.sha256((Path(root)/'source').read_bytes()).hexdigest()
-  assert hashlib.sha256((Path(root)/'candidate').read_bytes()).hexdigest()==expected
+  actual=hashlib.sha256((Path(root)/'candidate').read_bytes()).hexdigest()
+  assert actual!=expected  # Explicit source rebuild; vendor feature version is retained.
+  build=subprocess.check_output(['go','version','-m',str(Path(root)/'candidate')],text=True)
+  assert 'go1.27.2' in build
+  for module,version in [('golang.org/x/crypto','v0.57.0'),('golang.org/x/mod','v0.41.0'),('golang.org/x/net','v0.60.0'),('google.golang.org/grpc','v1.83.2')]:
+   assert module+'\t'+version in build
+
   config=json.loads(docker('image','inspect',image))[0]['Config']
   assert config['User']=='65535:65535' and config['Entrypoint']==['/mongodb_exporter']
   version=docker('run','--rm',image,'--version').decode()
   assert '0.53.' in version
   docker('run','--rm','--user','65534:65534','--entrypoint','/bin/sh',image,'-ec','''test "$(id -u)" = 65534
 for command in sh nc sleep cat; do /bin/busybox --list | grep -Fx "$command"; done
+test -s /etc/ssl/certs/ca-certificates.crt
 ! command -v mongod; ! command -v mongos
 nc -l -p 19216 -e /bin/cat & child=$!
 trap 'kill "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true' EXIT
@@ -25,7 +32,7 @@ sleep 1
 result=$(printf 'portable-relay\n' | nc -w 1 127.0.0.1 19216)
 test "$result" = portable-relay
 ''')
-  print(json.dumps({'unchangedUpstreamBinarySha256':expected,'nonRootDefault':True,'arbitraryUnprivilegedUid':True,'shellNcExecLoopback':True,'serverAbsent':True}))
+  print(json.dumps({'upstreamBinarySha256':expected,'securityRebuildBinarySha256':actual,'pinnedGoAndSecurityModules':True,'nonRootDefault':True,'arbitraryUnprivilegedUid':True,'shellNcExecLoopback':True,'serverAbsent':True}))
  finally:
   for label in ['source','candidate']:
    subprocess.run(['docker','rm','-f',prefix+'-'+label],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

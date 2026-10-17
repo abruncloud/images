@@ -65,6 +65,8 @@ jobs:
           path: |
             images/mongodb/versions.lock.json
             images/mongodb/generated
+            images/mongodb/security-source.lock.json
+            images/mongodb/security-build
           retention-days: 90
       - name: Describe proposed update
         if: steps.discovery.outputs.changed == 'true'
@@ -90,7 +92,7 @@ jobs:
           git config user.name 'abruncloud-images-bot'
           git config user.email 'images-bot@users.noreply.github.com'
           git switch -c "$branch"
-          git add images/mongodb/versions.lock.json images/mongodb/generated
+          git add images/mongodb/versions.lock.json images/mongodb/generated images/mongodb/security-source.lock.json images/mongodb/security-build
           git commit -m 'Update qualified MongoDB build inputs'
           gh auth setup-git
           lease=$(git ls-remote origin "refs/heads/$branch" | cut -f1)

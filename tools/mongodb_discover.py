@@ -4,13 +4,14 @@ import argparse
 import json
 import re
 from pathlib import Path
+from mongodb_security_source import refresh, source_review_inputs
 from discover import fetch, resolve
 ROOT = Path(__file__).resolve().parents[1]
 
 def review_inputs(lock):
     # Tools minor changes require review; same tools100.x minor patch and server8.0
     # patches/base security refreshes may use the existing protected routine flow.
-    result = {**lock, 'tools': {'release_line': '.'.join(lock['tools']['version'].split('.')[:2]), 'distribution': 'ubuntu2404'}, 'releases': []}
+    result = {**lock, 'tools': {'release_line': '.'.join(lock['tools']['version'].split('.')[:2]), 'distribution': 'ubuntu2404'}, 'releases': [], 'security_source': source_review_inputs('mongodb')}
     for release in lock['releases']:
         version, major = release['mongodb_version'], release['major']
         if not re.fullmatch(re.escape(major) + r'\.\d+', version):
@@ -22,7 +23,7 @@ def review_inputs(lock):
         result['releases'].append({k: v for k, v in release.items() if k not in {'mongodb_version', 'base_image', 'backup_base_image'}})
     return result
 
-def discover():
+def discover(update_source=True):
     current = json.loads((ROOT / 'images/mongodb/versions.lock.json').read_text())
     metadata = json.loads((ROOT / 'images/mongodb/image.json').read_text())
     upstream = fetch('https://raw.githubusercontent.com/docker-library/official-images/master/library/mongo')[0].decode()
@@ -51,6 +52,8 @@ def discover():
             raise ValueError('Both native architectures required')
         previous = next(item for item in current['releases'] if item['major'] == major)
         records.append({**previous, 'mongodb_version': version, 'base_image': server, 'backup_base_image': base, 'platforms': platforms})
+    if update_source:
+        refresh('mongodb', latest['version'])
     return {**current, 'tools': {'version': latest['version'], 'archives': archives}, 'releases': records}
 
 def main():
@@ -62,7 +65,7 @@ def main():
     if args.review_inputs:
         print(json.dumps(review_inputs(json.loads(output.read_text())), sort_keys=True, separators=(',', ':')))
         return
-    content = json.dumps(discover(), indent=2) + '\n'
+    content = json.dumps(discover(update_source=not args.check), indent=2) + '\n'
     if args.check:
         if output.read_text() != content:
             raise SystemExit('MongoDB inputs changed; discover and qualify update')

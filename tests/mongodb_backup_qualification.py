@@ -41,6 +41,16 @@ with tempfile.TemporaryDirectory(prefix=PREFIX) as temporary:
         docker('network', 'create', NETWORK)
         for volume in VOLUMES:
             docker('volume', 'create', volume)
+        identity = PREFIX + '-binary-check'
+        try:
+            docker('create', '--name', identity, BACKUP)
+            docker('cp', identity + ':/usr/local/bin/mongodump', str(directory / 'mongodump'))
+            build = subprocess.check_output(['go', 'version', '-m', str(directory / 'mongodump')], text=True)
+            assert 'go1.27.2' in build and 'golang.org/x/net\tv0.60.0' in build
+            assert '-tags=gssapi,failpoints' in build or '-tags=gssapi failpoints' in build
+            assert 'CGO_ENABLED=1' in build and '-buildmode=pie' in build
+        finally:
+            docker('rm', '-fv', identity, check=False)
         metadata = json.loads(docker('image', 'inspect', BACKUP).stdout)[0]['Config']
         assert metadata['User'] == '10001:10001'
         client(directory, 'sh', '-ec', 'test "$(id -u)" = 10001; ! command -v mongod; ! command -v mongos; ! command -v mongosh; mongodump --version; mongorestore --version; bsondump --version; python3 -c "import pymongo, yaml"')
@@ -77,13 +87,43 @@ a=connect(c['source']); a.fixture.items.insert_many([{'_id':ObjectId(),'unicode'
 '''
         (directory / 'prepare.py').write_text(script)
         client(directory, 'python3', '/fixture/prepare.py')
-        client(directory, 'mongodump', '--config=/fixture/dump.yml', '--archive=/backup/database.archive.gz', '--gzip', '--oplog')
+        # Cross-collection transactions run throughout the archive capture. A fresh
+        # oplog replay must recover complete pairs, not independently timed tables.
+        (directory / 'concurrent.py').write_text('''import json,pymongo,time
+from pathlib import Path
+c=json.load(open('/fixture/admin.json')); a=pymongo.MongoClient(c['source'],username='fixture_admin',password=c['password'],authSource='admin',directConnection=True,serverSelectionTimeoutMS=5000)
+a.fixture.create_collection('left'); a.fixture.create_collection('right')
+Path('/backup/writer.ready').write_text('ready')
+i=0
+while not Path('/backup/writer.stop').exists():
+ with a.start_session() as session:
+  with session.start_transaction():
+   a.fixture.left.insert_one({'_id':i,'pair':i},session=session)
+   a.fixture.right.insert_one({'_id':i,'pair':i},session=session)
+ i+=1
+ time.sleep(.01)
+assert i>0
+''')
+        writer = subprocess.Popen(['docker','run','--rm','--name',PREFIX+'-writer','--network',NETWORK,'-v',str(directory)+':/fixture:ro','-v',VOLUMES[2]+':/backup',BACKUP,'python3','/fixture/concurrent.py'],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        for _ in range(30):
+            if client(directory,'test','-f','/backup/writer.ready',check=False).returncode==0:
+                break
+            time.sleep(1)
+        else:
+            raise RuntimeError('Concurrent writer did not become ready')
+        try:
+            client(directory, 'mongodump', '--config=/fixture/dump.yml', '--archive=/backup/database.archive.gz', '--gzip', '--oplog')
+        finally:
+            client(directory,'touch','/backup/writer.stop')
+            assert writer.wait(timeout=30)==0
+
         # Archive is nonempty and is private under the default unprivileged user.
         client(directory, 'sh', '-ec', 'test -s /backup/database.archive.gz; test "$(stat -c %a /backup/database.archive.gz)" = 600')
         client(directory, 'mongorestore', '--config=/fixture/restore.yml', '--archive=/backup/database.archive.gz', '--gzip', '--oplogReplay', '--drop')
         (directory / 'verify.py').write_text('''import json,pymongo
 from bson import Binary, Decimal128
 c=json.load(open('/fixture/admin.json')); a=pymongo.MongoClient(c['restore'],username='fixture_admin',password=c['password'],authSource='admin',directConnection=True,serverSelectionTimeoutMS=5000)
+left=list(a.fixture.left.find().sort('_id')); right=list(a.fixture.right.find().sort('_id')); assert left and left==right
 rows=list(a.fixture.items.find().sort('n')); assert len(rows)==3 and [r['n'] for r in rows]==[0,1,2]; assert rows[0]['unicode']=='سلام 🌍' and rows[0]['binary']==b'\\x00\\xff' and rows[0]['decimal']==Decimal128('1234.50'); assert a.fixture.view.count_documents({})==2; assert any(x.get('unique') and dict(x['key'])=={'n':1} for x in a.fixture.items.list_indexes())
 ''')
         client(directory, 'python3', '/fixture/verify.py')
@@ -103,9 +143,9 @@ rows=list(a.fixture.items.find().sort('n')); assert len(rows)==3 and [r['n'] for
         time.sleep(2)
         docker('kill', '--signal=TERM', CONTAINERS[2])
         assert blackhole.wait(timeout=15) != 0
-        print(json.dumps({'engine':'mongodb','toolsVersion':'100.19.1','authenticatedReplicaSet':True,'archiveGzipOplogReplay':True,'freshRestoreBsonIndexesViews':True,'restart':True,'wrongPasswordRejected':True,'corruptArchiveRejected':True,'clientSignalCancellation':True,'clientOnlyNonRoot':True}))
+        print(json.dumps({'engine':'mongodb','toolsVersion':'100.19.1','authenticatedReplicaSet':True,'archiveGzipOplogReplay':True,'concurrentTransactionPairs':True,'securityRebuiltTools':True,'freshRestoreBsonIndexesViews':True,'restart':True,'wrongPasswordRejected':True,'corruptArchiveRejected':True,'clientSignalCancellation':True,'clientOnlyNonRoot':True}))
     finally:
-        for name in CONTAINERS:
+        for name in CONTAINERS+[PREFIX+'-writer']:
             docker('rm','-fv',name,check=False)
         for volume in VOLUMES:
             docker('volume','rm',volume,check=False)

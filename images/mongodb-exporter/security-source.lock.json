@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "upstream_version": "0.53.0",
+  "upstream_commit": "48208f20d75371755bf0b76af2d99e74980add00",
+  "source_url": "https://github.com/percona/mongodb_exporter/archive/48208f20d75371755bf0b76af2d99e74980add00.tar.gz",
+  "source_sha256": "445514eac711a610eb8acfe3a71e3739d40368beac526025b25f78ac14c73d40",
+  "go": {
+    "version": "1.27.2",
+    "base_image": "docker.io/library/golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61"
+  },
+  "module_overrides": {
+    "golang.org/x/crypto": "v0.57.0",
+    "golang.org/x/mod": "v0.41.0",
+    "golang.org/x/net": "v0.60.0",
+    "google.golang.org/grpc": "v1.83.2"
+  },
+  "build_tags": [],
+  "cgo_enabled": false,
+  "buildmode": "exe",
+  "addressed_cves": [
+    "CVE-2026-27145",
+    "CVE-2026-33811",
+    "CVE-2026-33814",
+    "CVE-2026-33818",
+    "CVE-2026-39820",
+    "CVE-2026-39821",
+    "CVE-2026-39822",
+    "CVE-2026-39836",
+    "CVE-2026-42499",
+    "CVE-2026-42504",
+    "CVE-2026-46600",
+    "CVE-2026-56853",
+    "CVE-2026-56854",
+    "CVE-2026-56858",
+    "CVE-2026-56859",
+    "CVE-2026-56860",
+    "CVE-2026-56862",
+    "CVE-2026-56864",
+    "CVE-2026-56865",
+    "CVE-2026-78667",
+    "CVE-2026-78669",
+    "CVE-2026-84304",
+    "CVE-2026-84445",
+    "CVE-2026-97031"
+  ],
+  "basis": {
+    "workflow_run": 39043285071,
+    "policy": "actionable",
+    "exceptions": []
+  }
+}

@@ -9,7 +9,7 @@ class MongoDBImagesTests(unittest.TestCase):
   generated=dict(mongodb_generate.rendered_files());self.assertEqual(len(generated),1)
   for path,text in generated.items():
    self.assertEqual(path.read_text(),text)
-   for contract in ['sha256sum --check --strict','cp /tmp/tools/bin/mongodump /tmp/tools/bin/mongorestore /tmp/tools/bin/bsondump','USER 10001:10001','python3-pymongo','python3-yaml','tini','setpriv','apt-get upgrade -y']:
+   for contract in ['sha256sum --check --strict',"-buildmode=pie -tags 'gssapi failpoints'",'USER 10001:10001','python3-pymongo','python3-yaml','tini','setpriv','apt-get upgrade -y']:
     self.assertIn(contract,text)
    self.assertNotIn('COPY --from=tools /tmp/tools/bin/',text)
    self.assertIn('! command -v mongod',text)
@@ -30,10 +30,12 @@ class MongoDBImagesTests(unittest.TestCase):
  def test_exporter_keeps_vendor_binary_and_nonroot_generic_entrypoint(self):
   for path,text in mongodb_exporter_generate.rendered_files():
    self.assertEqual(path.read_text(),text)
-   self.assertIn('COPY --from=upstream /mongodb_exporter /mongodb_exporter',text)
+   self.assertIn('COPY --from=build /out/mongodb_exporter /mongodb_exporter',text)
+   self.assertIn('go mod verify',text)
+   self.assertIn('/etc/ssl/certs/ca-certificates.crt',text)
    self.assertIn('USER 65535:65535',text)
    self.assertIn('ENTRYPOINT ["/mongodb_exporter"]',text)
-   self.assertNotIn('go build',text)
+   self.assertIn('CGO_ENABLED=0 go build',text)
    self.assertNotIn('bootstrap',text)
  def test_routine_updates_have_reviewed_boundaries(self):
   lock=json.loads((ROOT/'images/mongodb/versions.lock.json').read_text());before=mongodb_discover.review_inputs(lock);updated=copy.deepcopy(lock)

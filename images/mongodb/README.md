@@ -11,7 +11,7 @@ The first qualified line is MongoDB 8.0, with Database Tools **100.19.1** and on
 | `8.0.34-backup`, `8.0.34-noble-backup` | Qualified against server 8.0.34; rebuildable security aliases |
 | `8.0-backup`, `8.0-noble-backup` | Latest qualified image for the reviewed 8.0 server line |
 
-Database Tools have independent 100.x versions. A backup tag identifies the tested server compatibility line; `versions.lock.json` records the exact tools release, per-architecture HTTPS archive SHA256 and official base manifest. Existing platform instances pin the released image digest. No `latest`, server, temporary `build-*` or distribution variants beyond Noble are published to Docker Hub.
+Database Tools have independent 100.x versions. A backup tag identifies the tested server compatibility line; `versions.lock.json` records the exact tools release, upstream archive reference checksums and official base manifest. `security-source.lock.json` separately pins the exact source commit/archive, compiler and the security dependency floor used for our rebuild. Existing platform instances pin the released image digest. No `latest`, server, temporary `build-*` or distribution variants beyond Noble are published to Docker Hub.
 
 Ubuntu is intentional: MongoDB publishes and supports the official tools for Ubuntu 24.04 on both architectures. It does not publish supported Alpine/musl archives. The image also supplies Python3 with Ubuntu's maintained PyMongo and YAML packages, curl, jq, tar, gzip, tini and setpriv for generic backup orchestration.
 
@@ -56,9 +56,15 @@ The discovery workflow checks the official `mongo` image tag feed, MongoDB's too
 
 ## Licenses and sources
 
-MongoDB Database Tools are [Apache-2.0](https://github.com/mongodb/mongo-tools/blob/master/LICENSE.md). Their official archive license/notice files are retained in `/usr/share/licenses/mongodb-database-tools/`; installed Ubuntu packages retain their own copyright notices. The SSPL MongoDB server is not redistributed in this image.
+MongoDB Database Tools are [Apache-2.0](https://github.com/mongodb/mongo-tools/blob/master/LICENSE.md). Their source license/notice files and dependency licenses are retained in `/usr/share/licenses/mongodb-database-tools/`; installed Ubuntu packages retain their own copyright notices. The SSPL MongoDB server is not redistributed in this image.
 
 - [Database Tools compatibility and supported platforms](https://www.mongodb.com/docs/database-tools/mongodump/mongodump-compatibility-and-installation/)
 - [Official tools release/checksum feed](https://fastdl.mongodb.org/tools/db/release.json)
 - [mongodump consistency and oplog restrictions](https://www.mongodb.com/docs/database-tools/mongodump/)
 - [mongorestore compatibility and oplog replay](https://www.mongodb.com/docs/database-tools/mongorestore/)
+
+## Explicit security source rebuild
+
+The first candidate using upstream prebuilt binaries failed the existing actionable release policy. We retain that evidence and rebuild the exact upstream feature source with pinned Go1.27.2 and the minimal compatible security module graph. We do not claim binary identity with vendor releases, and do not suppress findings or change the release policy. See [security-source.lock.json](security-source.lock.json) for exact source commit/archive SHA256, compiler digest, security overrides and CVEs, and [security-build/go.mod](security-build/go.mod) / [go.sum](security-build/go.sum) for the complete reviewed dependency graph.
+
+The feature version and compatibility tags remain unchanged; every rebuild has a distinct immutable digest, source revision, SBOM, provenance and signed release record. Existing instances do not follow moving tags. Discovery updates exact source/module locks from the same official source repository, keeps compiler patches in the reviewed Go1.27 line and preserves minimum security floors. New feature/minor release lines require review; routine patches still require native tests and security qualification. TLS, native authentication and compression are preserved. MongoDB tools additionally retain the upstream Linux `gssapi,failpoints` build tags, CGO and PIE mode; GSSAPI links to the distribution Kerberos libraries.

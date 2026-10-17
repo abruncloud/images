@@ -2,6 +2,7 @@
 """Resolve reviewed Percona exporter patches and BusyBox security refreshes."""
 import argparse, hashlib, json, re
 from pathlib import Path
+from mongodb_security_source import refresh, source_review_inputs
 from discover import ACCEPT, fetch, resolve
 ROOT=Path(__file__).resolve().parents[1]
 def resolve_percona(version):
@@ -15,7 +16,7 @@ def resolve_percona(version):
  return 'docker.io/'+repository+':'+version+'@'+digest
 
 def review_inputs(lock):
- result={**lock,'releases':[]}
+ result={**lock,'releases':[],'security_source':source_review_inputs('mongodb-exporter')}
  for item in lock['releases']:
   version=item['mongodb-exporter_version'];major=item['major']
   if not re.fullmatch(re.escape(major)+r'\.\d+',version):raise ValueError('Unreviewed exporter version')
@@ -24,7 +25,7 @@ def review_inputs(lock):
   result['releases'].append({k:v for k,v in item.items() if k not in {'mongodb-exporter_version','base_image','runtime_base_image'}})
  return result
 
-def discover():
+def discover(update_source=True):
  current=json.loads((ROOT/'images/mongodb-exporter/versions.lock.json').read_text())
  tags=json.loads(fetch('https://api.github.com/repos/percona/mongodb_exporter/tags?per_page=100')[0])
  upstream=fetch('https://raw.githubusercontent.com/docker-library/official-images/master/library/busybox')[0].decode()
@@ -37,11 +38,13 @@ def discover():
   if not versions:raise ValueError('Reviewed exporter line unavailable')
   version=max(versions,key=lambda v:tuple(map(int,v.split('.'))))
   records.append({**item,'mongodb-exporter_version':version,'base_image':resolve_percona(version),'runtime_base_image':base})
+ if len(records)!=1:raise ValueError('One reviewed exporter source line required')
+ if update_source:refresh('mongodb-exporter',records[0]['mongodb-exporter_version'])
  return {**current,'releases':records}
 def main():
  parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--check',action='store_true');parser.add_argument('--review-inputs',action='store_true');args=parser.parse_args();output=ROOT/'images/mongodb-exporter/versions.lock.json'
  if args.review_inputs:print(json.dumps(review_inputs(json.loads(output.read_text())),sort_keys=True,separators=(',',':')));return
- content=json.dumps(discover(),indent=2)+'\n'
+ content=json.dumps(discover(update_source=not args.check),indent=2)+'\n'
  if args.check:
   if output.read_text()!=content:raise SystemExit('Exporter inputs changed; discover and qualify update')
  else:output.write_text(content);print(output.relative_to(ROOT))
