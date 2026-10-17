@@ -32,7 +32,7 @@ jobs:
       - id: matrix
         run: echo "value=$(python3 tools/release.py matrix)" >> "$GITHUB_OUTPUT"
       - id: mysql-matrix
-        run: echo "value=$(python3 tools/release.py --image mysql matrix)" >> "$GITHUB_OUTPUT"
+        run: echo "value=$(python3 tools/release.py --image mysql matrix --target backup)" >> "$GITHUB_OUTPUT"
   native-test:
     needs: metadata
     strategy:

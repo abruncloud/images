@@ -15,7 +15,7 @@ jobs:
         with:
           persist-credentials: false
       - id: matrix
-        run: echo "value=$(python3 tools/release.py --image mysql matrix)" >> "$GITHUB_OUTPUT"
+        run: echo "value=$(python3 tools/release.py --image mysql matrix --target backup)" >> "$GITHUB_OUTPUT"
   scan:
     needs: metadata
     strategy:

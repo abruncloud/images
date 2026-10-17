@@ -21,7 +21,7 @@ jobs:
       - name: Validate publication metadata and security policy
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - id: matrix
-        run: echo "value=$(python3 tools/release.py --image mysql matrix)" >> "$GITHUB_OUTPUT"
+        run: echo "value=$(python3 tools/release.py --image mysql matrix --target backup)" >> "$GITHUB_OUTPUT"
   qualify:
     needs: metadata
     strategy:
@@ -151,7 +151,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ github.sha }}
           REPOSITORY: ${{ github.repository }}
-        run: python3 tools/publish.py --image mysql
+        run: python3 tools/publish.py --image mysql --target backup
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
