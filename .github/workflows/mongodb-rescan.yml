@@ -1,0 +1,68 @@
+name: Rescan published MongoDB images
+on:
+  schedule:
+    - cron: '59 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - id: matrix
+        run: echo "value=$(python3 tools/release.py --image mongodb matrix --target backup)" >> "$GITHUB_OUTPUT"
+  scan:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - name: Rescan backup against current vulnerability database
+        if: always() && matrix.backup
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e
+        with:
+          version: v0.75.0
+          image-ref: abruncloud/mongodb:${{ matrix.mongodb_version }}-backup
+          output: scan-backup.json
+          format: json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          scanners: vuln
+          exit-code: '0'
+          ignore-unfixed: false
+      - name: Verify scanned native architecture
+        if: always() && matrix.backup
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          report = json.load(open("scan-backup.json"))
+          observed = report.get("Metadata", {}).get("ImageConfig", {}).get("architecture")
+          if observed != os.environ["EXPECTED_ARCH"]:
+              raise SystemExit("Scanner architecture mismatch: " + str(observed))
+          PYTHON
+      - name: Retain complete vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: rescan-security-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.major }}-${{ matrix.variant }}-${{ matrix.arch }}
+          path: scan-*.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Enforce security policy for every expected artifact
+        if: always()
+        env:
+          BACKUP_ENABLED: ${{ matrix.backup }}
+        run: |
+          python3 tools/security_gate.py --policy images/mongodb/security-policy.json scan-backup.json

@@ -37,7 +37,7 @@ class ClickHouseRecipeTests(unittest.TestCase):
   self.assertIn('needs: [metadata, qualify]',workflow)
   self.assertIn('sbom: true',workflow)
  def test_pull_request_checks_are_required_and_real(self):
-  workflow=(ROOT/'.github/workflows/check.yml').read_text();self.assertIn('clickhouse-native-test]',workflow)
+  workflow=(ROOT/'.github/workflows/check.yml').read_text();self.assertIn('clickhouse-native-test, mongodb-native-test, mongodb-exporter-native-test]',workflow)
   self.assertIn('test "$CLICKHOUSE_TESTS" = success',workflow)
   workflow=(ROOT/'.github/workflows/clickhouse-discover.yml').read_text();self.assertIn('--event pull_request',workflow)
   self.assertNotIn('--admin',workflow)
