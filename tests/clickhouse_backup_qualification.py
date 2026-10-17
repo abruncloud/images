@@ -36,7 +36,7 @@ try:
  (root/'extensions.cnf').write_text('subjectAltName=DNS:ch-fixture\nextendedKeyUsage=serverAuth\n')
  command('openssl','x509','-req','-in',str(root/'server.csr'),'-CA',str(root/'ca.pem'),'-CAkey',str(root/'ca.key'),'-CAcreateserial','-days','1','-out',str(root/'server.pem'),'-extfile',str(root/'extensions.cnf'))
  (root/'connection.xml').write_bytes(xml_config());(root/'wrong-host.xml').write_bytes(xml_config(host=server_name));(root/'wrong-ca.xml').write_bytes(xml_config(ca='/tls/server.pem'))
- (root/'server.xml').write_text("""<clickhouse><listen_host>0.0.0.0</listen_host><tcp_port_secure>9440</tcp_port_secure><max_server_memory_usage>1073741824</max_server_memory_usage><max_thread_pool_size>128</max_thread_pool_size><background_pool_size>4</background_pool_size><background_schedule_pool_size>4</background_schedule_pool_size><background_message_broker_schedule_pool_size>2</background_message_broker_schedule_pool_size><background_distributed_schedule_pool_size>2</background_distributed_schedule_pool_size><openSSL><server><certificateFile>/tls/server.pem</certificateFile><privateKeyFile>/tls/server.key</privateKeyFile><verificationMode>none</verificationMode></server></openSSL><storage_configuration><disks><backups><type>local</type><path>/backups/</path></backups></disks></storage_configuration><backups><allowed_disk>backups</allowed_disk></backups></clickhouse>""")
+ (root/'server.xml').write_text("""<clickhouse><listen_host>0.0.0.0</listen_host><tcp_port_secure>9440</tcp_port_secure><max_server_memory_usage>1073741824</max_server_memory_usage><max_thread_pool_size>128</max_thread_pool_size><background_pool_size>16</background_pool_size><background_schedule_pool_size>4</background_schedule_pool_size><background_message_broker_schedule_pool_size>2</background_message_broker_schedule_pool_size><background_distributed_schedule_pool_size>2</background_distributed_schedule_pool_size><openSSL><server><certificateFile>/tls/server.pem</certificateFile><privateKeyFile>/tls/server.key</privateKeyFile><verificationMode>none</verificationMode></server></openSSL><storage_configuration><disks><backups><type>local</type><path>/backups/</path></backups></disks></storage_configuration><backups><allowed_disk>backups</allowed_disk></backups></clickhouse>""")
  (root/'users.xml').write_text('<clickhouse><users><default><password remove="1"/><password_sha256_hex>'+hashlib.sha256(password.encode()).hexdigest()+'</password_sha256_hex><networks><ip>::/0</ip></networks><profile>default</profile><quota>default</quota><access_management>1</access_management></default></users><profiles><default><max_threads>2</max_threads></default></profiles></clickhouse>')
  for file in root.iterdir():
   if file.is_file():file.chmod(0o444)
@@ -50,7 +50,9 @@ try:
   try:
    observed=query('SELECT version() FORMAT TSVRaw',timeout=20);break
   except (RuntimeError,subprocess.TimeoutExpired):
-   if time.monotonic()>deadline:raise
+   if time.monotonic()>deadline:
+    logs=command('docker','logs','--tail','60',server_name,check=False)
+    raise RuntimeError('server fixture failed readiness: '+(logs.stdout+logs.stderr)[-3000:].replace(password,'[redacted]'))
    time.sleep(2)
  expected=server.split(':')[-1].split('-jammy')[0]
  if observed!=expected:raise RuntimeError('wrong server fixture version: '+observed)
