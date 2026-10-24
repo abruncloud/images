@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 # Rebuild the same gosu source with a patched compiler; only artifacts enter runtime.
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.2-trixie@sha256:e58d6f83b3416618d8bcac2b3dde1b7f7e3c4a77d25e88637f8bbae81536c48d AS gosu-build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4 AS gosu-build
 ARG TARGETARCH
 ENV GOTOOLCHAIN=local CGO_ENABLED=0
 RUN set -eux; \
-    test "$(go env GOVERSION)" = 'go1.27.2'; \
+    test "$(go env GOVERSION)" = 'go1.27.3'; \
     curl --fail --show-error --location --proto '=https' --tlsv1.2 \
         'https://github.com/tianon/gosu/archive/refs/tags/1.19.tar.gz' --output /tmp/gosu.tar.gz; \
     echo 'cd9719b775dbfedae53923c9b0dc792b66d42c51e0b36652ed6f747fbadc0164  /tmp/gosu.tar.gz' | sha256sum --check -; \
@@ -19,7 +19,7 @@ RUN set -eux; \
     cp LICENSE /out/LICENSE
 
 # Generated from the reviewed lock file. Preserve the official runtime contract.
-FROM docker.io/library/postgres:18.6-trixie@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 AS extension-build
+FROM docker.io/library/postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6 AS extension-build
 
 RUN set -eux; \
     apt-get update; \
@@ -37,11 +37,11 @@ RUN set -eux; \
     install -Dm644 LICENSE /artifact/usr/share/doc/pgvector/LICENSE; \
     install -Dm644 README.md /artifact/usr/share/doc/pgvector/README.md
 
-FROM docker.io/library/postgres:18.6-trixie@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+FROM docker.io/library/postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
 COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
 COPY --from=gosu-build /out/LICENSE /usr/share/doc/gosu/LICENSE
 ENV GOSU_VERSION=1.19
-LABEL io.abruncloud.gosu.version="1.19" io.abruncloud.gosu.go.version="1.27.2"
+LABEL io.abruncloud.gosu.version="1.19" io.abruncloud.gosu.go.version="1.27.3"
 COPY --from=extension-build /artifact/ /
 LABEL org.opencontainers.image.title="AbrunCloud PostgreSQL" \
       org.opencontainers.image.description="Official PostgreSQL with pgvector; upstream initialization and configuration conventions" \
