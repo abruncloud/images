@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
-FROM docker.io/library/mysql:8.4.11-oraclelinux9@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70 AS tools-source
+FROM docker.io/library/mysql:8.4.13-oraclelinux9@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69 AS tools-source
 
 # Independent client artifact: the source supplies only its trusted signing key.
-FROM docker.io/library/oraclelinux:9-slim@sha256:2feab5eb9e442ab342de183d12aa72a619e8080bee27ba1957a2005cf6a3879b
+FROM docker.io/library/oraclelinux:9-slim@sha256:80729a271d86b1fd6848827fd8442c67c5770833ae3e5bf0fcd7538c72072e6d
 COPY --from=tools-source /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql
 RUN set -eux; \
     printf '%s\n' '[mysql-community-client]' \
@@ -13,15 +13,15 @@ RUN set -eux; \
     rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql; \
     microdnf update -y --setopt=install_weak_deps=0; \
     microdnf install -y --setopt=install_weak_deps=0 ca-certificates util-linux curl jq python3 tar gzip coreutils-single sed \
-      mysql-community-client-8.4.11-1.el9; \
+      mysql-community-client-8.4.13-1.el9; \
     microdnf clean all; \
-    test "$(rpm -q --qf '%{VERSION}-%{RELEASE}' mysql-community-client)" = '8.4.11-1.el9'; \
+    test "$(rpm -q --qf '%{VERSION}-%{RELEASE}' mysql-community-client)" = '8.4.13-1.el9'; \
     for tool in mysql mysqldump mysqladmin mysqlbinlog; do "$tool" --version; done; \
     for tool in setsid curl jq python3 tar gzip sha256sum wc sed; do command -v "$tool"; done; \
     ! command -v mysqld; \
     ! rpm -qa | grep -E 'mysql-community-server|mariadb'
 LABEL org.opencontainers.image.title="MySQL backup clients" \
-      org.opencontainers.image.version="8.4.11" \
+      org.opencontainers.image.version="8.4.13" \
       org.opencontainers.image.description="Oracle MySQL client-only logical backup tools" \
       org.opencontainers.image.source="https://github.com/abruncloud/images"
 COPY images/mysql/backup/entrypoint.sh /usr/local/bin/mysql-backup

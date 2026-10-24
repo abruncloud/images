@@ -6,22 +6,22 @@
     "sha256": "cd9719b775dbfedae53923c9b0dc792b66d42c51e0b36652ed6f747fbadc0164"
   },
   "go": {
-    "version": "1.27.2",
-    "base_image": "docker.io/library/golang:1.27.2-trixie@sha256:e58d6f83b3416618d8bcac2b3dde1b7f7e3c4a77d25e88637f8bbae81536c48d"
+    "version": "1.27.3",
+    "base_image": "docker.io/library/golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4"
   },
   "releases": [
     {
       "major": "8.4",
       "release_line": "8.4",
-      "mysql_version": "8.4.11",
+      "mysql_version": "8.4.13",
       "variant": "oraclelinux9",
-      "base_image": "docker.io/library/mysql:8.4.11-oraclelinux9@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70",
-      "mysql_client_rpm_version": "8.4.11-1.el9",
+      "base_image": "docker.io/library/mysql:8.4.13-oraclelinux9@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69",
+      "mysql_client_rpm_version": "8.4.13-1.el9",
       "platforms": [
         "linux/amd64",
         "linux/arm64"
       ],
-      "backup_base_image": "docker.io/library/oraclelinux:9-slim@sha256:2feab5eb9e442ab342de183d12aa72a619e8080bee27ba1957a2005cf6a3879b"
+      "backup_base_image": "docker.io/library/oraclelinux:9-slim@sha256:80729a271d86b1fd6848827fd8442c67c5770833ae3e5bf0fcd7538c72072e6d"
     }
   ]
 }
