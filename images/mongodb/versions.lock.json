@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "tools": {
-    "version": "100.19.1",
+    "version": "100.20.0",
     "archives": {
       "amd64": {
-        "url": "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2404-x86_64-100.19.1.tgz",
-        "sha256": "f34b84a67ab96b4ff52571ec5d15e2148d96cb140b1ea9ef8c29ac33c48e3480"
+        "url": "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2404-x86_64-100.20.0.tgz",
+        "sha256": "0cee7b5bf3e986a01f5b4fcc750d056064a619ba7131cf1b22fef139558cc4be"
       },
       "arm64": {
-        "url": "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2404-arm64-100.19.1.tgz",
-        "sha256": "ebf518d9a303b36e612e40be106cd0ecc7135dc15d098626f81ac3ee8654a821"
+        "url": "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2404-arm64-100.20.0.tgz",
+        "sha256": "753d53e36c5f0631f1a7a158d3ade5a2a02d79958f5eaa0c7c6aaed9f0f5784e"
       }
     }
   },
@@ -19,8 +19,8 @@
       "release_line": "8.0",
       "mongodb_version": "8.0.34",
       "variant": "noble",
-      "base_image": "docker.io/library/mongo:8.0.34-noble@sha256:c2d54fddfb3738fb27fe117f51692e3f44e640a3e7aeb8da3937ee9cd33a650b",
-      "backup_base_image": "docker.io/library/ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac",
+      "base_image": "docker.io/library/mongo:8.0.34-noble@sha256:3c64937121b9437095921c4bb2569911084c05f7b88e4a263d62a8959d2b2399",
+      "backup_base_image": "docker.io/library/ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852",
       "platforms": [
         "linux/amd64",
         "linux/arm64"
