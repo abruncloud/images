@@ -4,13 +4,13 @@
     {
       "major": "8.2",
       "release_line": "8.2",
-      "redis_version": "8.2.10",
+      "redis_version": "8.2.11",
       "variant": "alpine3.22",
-      "base_image": "docker.io/library/redis:8.2.10-bookworm@sha256:47670742d7924adbcdb404d1288b6327815b23141969c0939b8e5d61f78c2634",
-      "backup_base_image": "docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8",
-      "source_url": "https://github.com/redis/redis/archive/refs/tags/8.2.10.tar.gz",
-      "source_sha256": "d6de0ec3bce8eeba13ecbd7478dd56fb87a4bbe8ec832dd876892a86ac1a55ec",
-      "official_source_commit": "78ec6fbd0dcf6ea97b4828244ae5f7ec4d04d01a",
+      "base_image": "docker.io/library/redis:8.2.11-bookworm@sha256:99ffb973380cc2f47bca06bd094f7f8c7138a0879a63cb8939896a22b7a65bba",
+      "backup_base_image": "docker.io/library/alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f",
+      "source_url": "https://github.com/redis/redis/archive/refs/tags/8.2.11.tar.gz",
+      "source_sha256": "921fa6d9210d7012782861b256e2fca18cff7d71a62c27693c293bd626def4b4",
+      "official_source_commit": "ffe34ace97d06343e05e3f39eb8a43f829dded24",
       "platforms": [
         "linux/amd64",
         "linux/arm64"
