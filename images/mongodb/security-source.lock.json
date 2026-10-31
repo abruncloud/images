@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "upstream_version": "100.19.1",
-  "upstream_commit": "9348e032419d906e40966f477278cce647b9b1eb",
-  "source_url": "https://github.com/mongodb/mongo-tools/archive/9348e032419d906e40966f477278cce647b9b1eb.tar.gz",
-  "source_sha256": "554c7f171a7b7d3ce42faf2c07112868173f9c008393ef4e7f0b861057c60980",
+  "upstream_version": "100.20.0",
+  "upstream_commit": "7536fd7f3d67f5115de3eb2e271b327b7ce329b9",
+  "source_url": "https://github.com/mongodb/mongo-tools/archive/7536fd7f3d67f5115de3eb2e271b327b7ce329b9.tar.gz",
+  "source_sha256": "cf456aea0f97ed79b52e3f920fba23516a1a458e2416f3a4e1022a5e35b73bfb",
   "go": {
-    "version": "1.27.2",
-    "base_image": "docker.io/library/golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61"
+    "version": "1.27.3",
+    "base_image": "docker.io/library/golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9"
   },
   "module_overrides": {
     "golang.org/x/net": "v0.60.0"
