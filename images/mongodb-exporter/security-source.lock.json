@@ -5,8 +5,8 @@
   "source_url": "https://github.com/percona/mongodb_exporter/archive/48208f20d75371755bf0b76af2d99e74980add00.tar.gz",
   "source_sha256": "445514eac711a610eb8acfe3a71e3739d40368beac526025b25f78ac14c73d40",
   "go": {
-    "version": "1.27.2",
-    "base_image": "docker.io/library/golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61"
+    "version": "1.27.4",
+    "base_image": "docker.io/library/golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea"
   },
   "module_overrides": {
     "golang.org/x/crypto": "v0.57.0",
