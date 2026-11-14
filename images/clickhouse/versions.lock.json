@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "go": {
-    "version": "1.27.2",
-    "base_image": "docker.io/library/golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61"
+    "version": "1.27.4",
+    "base_image": "docker.io/library/golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea"
   },
   "client": {
     "name": "clickhouse-sql",
@@ -14,10 +14,10 @@
     {
       "major": "26.8",
       "release_line": "26.8",
-      "clickhouse_version": "26.8.28.14",
+      "clickhouse_version": "26.8.36.3",
       "variant": "alpine3.22",
-      "base_image": "docker.io/library/clickhouse:26.8.28.14-jammy@sha256:caa00dbfff2eaf3e2537c93c5167d7ff38a943a2986e0625d1977d90b78d0109",
-      "backup_base_image": "docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8",
+      "base_image": "docker.io/library/clickhouse:26.8.36.3-jammy@sha256:07b744792d5b54da40ff7c5f18a9fcca929fd85f6cc317259dc5beb9dda1f90b",
+      "backup_base_image": "docker.io/library/alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f",
       "platforms": [
         "linux/amd64",
         "linux/arm64"
